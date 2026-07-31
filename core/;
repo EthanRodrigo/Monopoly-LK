@@ -1,7 +1,0 @@
-#include "board.h"
-
-void draw_board(){
-	Square square[40];
-
-	square[2].type->prop.group = BROWN;  
-}
