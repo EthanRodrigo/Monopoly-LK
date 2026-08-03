@@ -42,7 +42,6 @@ typedef struct {
 } Property;
 
 typedef struct {
-    char *name;
     Owner owner;
 } Railway;
 

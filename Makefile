@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -Iinclude 
 
-SRC = src/board.c
+SRC = src/*.c
 TARGET = game
 
 $(TARGET): $(SRC)

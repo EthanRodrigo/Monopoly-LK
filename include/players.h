@@ -21,4 +21,6 @@ typedef struct {
     int net_worth;
 } Player;
 
+void initialize_players(void);
+
 #endif /* PLAYERS_H */

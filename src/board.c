@@ -512,7 +512,3 @@ void draw_board(){
 		printf("%s\n", board[i].name);
 	}
 }
-
-int main(){
-	draw_board();
-}
