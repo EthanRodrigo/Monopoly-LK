@@ -12,4 +12,6 @@ typedef struct {
     int current_player;
 } Game;
 
+void find_roll_order(int* play_order, int* sum, int len);
+
 #endif /* GAME_H */
