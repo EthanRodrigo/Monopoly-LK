@@ -1,10 +1,6 @@
 #include <string.h>
 #include "board.h"
 
-void pass_start(Player *p){
-   p->net_worth += 2000; 
-}
-
 void draw_board(Square* board){
 	Square temp_board[40] = {
 		[0] = {

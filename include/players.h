@@ -1,6 +1,8 @@
 #ifndef PLAYERS_H
 #define PLAYERS_H
 
+#define NO_OF_PLAYERS 4
+
 typedef enum {
     AGGRESSIVE_INVESTOR,
     CONSERVATIVE_BANKER,
@@ -18,7 +20,9 @@ typedef enum {
 
 typedef struct {
     PlayerType type;
+    int cash;
     int net_worth;
+    int position;
 } Player;
 
 void initialize_players(Player* players);

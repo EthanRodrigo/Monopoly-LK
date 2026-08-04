@@ -1,5 +1,6 @@
 CC = gcc
-CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -Iinclude 
+CFLAGS = -std=c11 -Wall -Wextra -Wpedantic -Iinclude \
+		 -fsanitize=address,undefined
 
 SRC = src/*.c
 TARGET = game
@@ -9,3 +10,6 @@ $(TARGET): $(SRC)
 
 clean:
 	rm -f $(TARGET)
+
+debug:
+	$(CC) $(CFLAGS) -g $(SRC) -o $(TARGET)

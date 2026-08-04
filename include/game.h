@@ -14,7 +14,6 @@ typedef struct {
 } Game;
 
 void find_roll_order(int* play_order, int* sum, int len);
-int roll();
 void start_simulation(void);
 
 #endif /* GAME_H */
