@@ -25,7 +25,9 @@ typedef struct {
 } Utility;
 
 typedef struct {
-    int abc;
+    int award;
+
+    void (*pass_start)(Player *p);
 } Start;
 
 typedef struct {
@@ -72,6 +74,6 @@ typedef struct {
     } data;
 } Square;
 
-void draw_board(void);
+void draw_board(Square* board);
 
 #endif /* BOARD_H */

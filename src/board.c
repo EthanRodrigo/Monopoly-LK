@@ -1,13 +1,18 @@
-#include <stdio.h>
+#include <string.h>
 #include "board.h"
 
-void draw_board(){
-	Square board[40] = {
+void pass_start(Player *p){
+   p->net_worth += 2000; 
+}
+
+void draw_board(Square* board){
+	Square temp_board[40] = {
 		[0] = {
 			.type = START,
 			.name = "GO",
 			.data.start = {
-				.abc = 200
+				.award = 2000,
+                .pass_start = NULL,
 			}
 		},
 
@@ -123,8 +128,9 @@ void draw_board(){
 		[10] = {
 			.type = START,
 			.name = "Jail / Just Visiting",
-			.data.start = {
-				.abc = 0
+            .data.start = {
+				.award = 2000,
+                .pass_start = NULL,
 			}
 		},
 
@@ -259,8 +265,9 @@ void draw_board(){
 		[20] = {
 			.type = START,
 			.name = "Free Parking",
-			.data.start = {
-				.abc = 0
+            .data.start = {
+				.award = 2000,
+                .pass_start = NULL,
 			}
 		},
 
@@ -391,8 +398,9 @@ void draw_board(){
 		[30] = {
 			.type = START,
 			.name = "Go To Jail",
-			.data.start = {
-				.abc = 0
+            .data.start = {
+				.award = 2000,
+                .pass_start = NULL,
 			}
 		},
 
@@ -508,7 +516,5 @@ void draw_board(){
 		}
 	};
 
-	for(int i = 0; i < 40; i++){
-		printf("%s\n", board[i].name);
-	}
+    memcpy(board, temp_board, sizeof(Square) * 40);
 }

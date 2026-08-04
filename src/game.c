@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <time.h>
 #include "players.h"
+#include "board.h"
 
 /* roll both dice for a player
  * @return The sum of the both rolls
@@ -42,6 +43,11 @@ void find_roll_order(int* play_order, int* sum, int len){
     } 
     swap_sort(play_order, sum, len);
 
+    for(int i = 0; i < len; i++){
+        printf("%d\t", sum[i]);
+    } 
+    putc(10, stdout);
+
     int i = 0;
     while(i < len){
         int ties = 1;
@@ -56,4 +62,23 @@ void find_roll_order(int* play_order, int* sum, int len){
         }
         i += ties;
     }
+}
+
+void start_simulation(void){
+    srand((unsigned int)time(NULL));
+    Square board[BOARD_SIZE];
+    draw_board(board);
+
+    Player players[4];
+    initialize_players(players);
+    
+    int play_order[4] = {0, 1, 2, 3};
+    int sum[4] = {0, 0, 0, 0};
+    find_roll_order(play_order, sum, 4);
+
+    // TODO: remove this. Testing purposes only
+    for(int i = 0; i < 4; i++){
+        printf("Position %d: Player %d (Latest Sum: %d)\n", i + 1, play_order[i], sum[play_order[i]]);
+    }
+    // TODO: define the main loop here
 }
