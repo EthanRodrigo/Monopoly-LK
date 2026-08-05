@@ -19,10 +19,11 @@ typedef enum {
 } Owner;
 
 typedef struct {
-    PlayerType type;
+    PlayerType id;
     int cash;
     int net_worth;
     int position;
+    int player_rounds;
 } Player;
 
 void initialize_players(Player* players);
