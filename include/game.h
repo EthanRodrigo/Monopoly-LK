@@ -16,7 +16,7 @@ typedef struct {
 } Game;
 
 typedef struct {
-    uint8_t players_passed_go;
+    uint8_t players_passed_go;  // a bitmap for all 4 players
     int game_round;
     void (*mark_player_game_rounds)(uint8_t* bitmap, int player_id);
     void (*reset_player_game_rounds)(uint8_t* bitmap);

@@ -74,14 +74,13 @@ void pass_start(Player* p, GameStat* game){
  * @param roll The rolled sum of the two dices
  * @return The type of the square 
  * */
-int move(Player* p, Square* b, int roll, GameStat* game){
+void move(Player* p, int roll, GameStat* game){
     int old_position = p->position;
     p->position = (old_position + roll) % BOARD_SIZE;   // can't be 40+
 
     if (p->position < old_position){
         pass_start(p, game);
     }
-    return b[p->position].type;
 }
 
 void mark_game_round(uint8_t* bitmap, int player_id){
@@ -95,7 +94,7 @@ void reset_game_round(uint8_t* bitmap){
 void start_simulation(void){
     srand((unsigned int)time(NULL));
     GameStat game;
-    game.game_round = 0;
+    game.game_round = 1;
     game.players_passed_go = 0;
     game.mark_player_game_rounds = mark_game_round;
     game.reset_player_game_rounds = reset_game_round;
@@ -110,13 +109,21 @@ void start_simulation(void){
     int sum[NO_OF_PLAYERS] = {0, 0, 0, 0};
     find_roll_order(play_order, sum, NO_OF_PLAYERS);
 
+    printf("%d \t", play_order[0]);
+    printf("%d \t", play_order[1]);
+    printf("%d \t", play_order[2]);
+    printf("%d \t", play_order[3]);
+    putc(10, stdout);
+
     // TODO: The 500 rounds loop
-    while (game.game_round < 500){
+    while (game.game_round <= 500){
         // Player turn; roll, move, action
         for(int i = 0; i < NO_OF_PLAYERS; i++){
+            Player* player = &players[play_order[i]];
             int val = roll();
-            int square = move(&players[play_order[i]], board, val, &game);
-            printf("%s \t", board[square].name);
+            move(player, val, &game);
+            printf("roll: %d\n", val);
+            printf("player: %d square: %s\n", player->id, board[player->position].name);
         }
         printf("Game Round: %d\n", game.game_round);
         if (game.players_passed_go == 15) {
