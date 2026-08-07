@@ -5,6 +5,7 @@
 #include "players.h"
 #include "board.h"
 #include "game.h"
+
 /* roll both dice for a player
  * @return The sum of the both rolls
  * */
@@ -115,7 +116,6 @@ void start_simulation(void){
     printf("%d \t", play_order[3]);
     putc(10, stdout);
 
-    // TODO: The 500 rounds loop
     while (game.game_round <= 500){
         // Player turn; roll, move, action
         for(int i = 0; i < NO_OF_PLAYERS; i++){
