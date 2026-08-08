@@ -116,8 +116,8 @@ void start_simulation(void){
     printf("%d \t", play_order[3]);
     putc(10, stdout);
 
-//    while (game.game_round <= 500){
-    while (game.game_round <= 3){
+    while (game.game_round <= 500){
+//    while (game.game_round <= 3){
         // Player turn; roll, move, action
         for(int i = 0; i < NO_OF_PLAYERS; i++){
             Player* player = &players[play_order[i]];

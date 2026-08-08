@@ -35,9 +35,49 @@ void aggressive_buy(Player *p, Square *board){
         p->cash -= price;
     }
 }
-void conservative_buy(Player *p, Square *board){}
-void risky_buy(Player *p, Square *board){}
-void opportunistic_buy(Player *p, Square *board){}
+
+void conservative_buy(Player *p, Square *board){
+    Square *s = &board[p->position];    
+    if (!s->purchasable || get_owner(s)) return;
+
+    int price = get_purchase_price(s);
+    int calculated_remaining = p->cash - price; 
+
+    if (calculated_remaining >= (p->cash / 2)){
+        set_owner(s, p->owner_id);
+        p->cash -= price;
+    }
+}
+
+void risky_buy(Player *p, Square *board){
+    Square *s = &board[p->position];    
+    if (!s->purchasable || get_owner(s)) return;
+
+    int price = get_purchase_price(s);
+    if (p->cash >= price){
+        set_owner(s, p->owner_id);
+        p->cash -= price;
+    }
+}
+
+void opportunistic_buy(Player *p, Square *board){
+    Square *s = &board[p->position];
+    if (!s->purchasable || get_owner(s)) return;
+
+    int price = get_purchase_price(s);
+    if (p->cash < price) return;
+
+    // TODO: replace with real "projected appreciation vs construction cost"
+    // once inflation / market boom-decline / regional development cards exist.
+    // For now: treat rent-to-price ratio as a stand-in for "good return."
+    int rent = get_rent(s);
+    int good_return = (rent * 100 >= price * 8);
+
+    if (good_return){
+        set_owner(s, p->owner_id);
+        p->cash -= price;
+    }
+}
 
 void initialize_players(Player* players){
 	Player temp_players[NO_OF_PLAYERS] = {
