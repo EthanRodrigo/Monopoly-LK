@@ -18,14 +18,27 @@ typedef enum {
     PLAYER_4
 } Owner;
 
-typedef struct {
+// Forward declarion of Square so Player knows it exists
+typedef struct Square Square;
+
+typedef struct Player {
     PlayerType id;
+    Owner owner_id;
     int cash;
     int net_worth;
     int position;
     int player_rounds;
+    
+    void (*buy_property)(struct Player *p, Square *s);
 } Player;
 
 void initialize_players(Player* players);
+
+// Buying functions for each player
+// TODO: Implement the buys
+void aggressive_buy(Player *p, Square *board);
+void conservative_buy(Player *p, Square *board);
+void risky_buy(Player *p, Square *board);
+void opportunistic_buy(Player *p, Square *board);
 
 #endif /* PLAYERS_H */

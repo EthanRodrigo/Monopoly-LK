@@ -5,13 +5,12 @@
 #include "board.h"
 #include "players.h"
 
-#define MAX_PLAYERS 4
 #define MAX_ROUNDS 500
 
 // TODO: remove if ain't using
 typedef struct {
     Square board[BOARD_SIZE];
-    Player players[MAX_PLAYERS];
+    Player players[NO_OF_PLAYERS];
     int current_player;
 } Game;
 

@@ -1,10 +1,8 @@
 #ifndef BOARD_H
 #define BOARD_H
-
-#include <stdbool.h>
-
-#include "events.h"
-#include "finance.h"
+#include <stdbool.h> 
+#include "events.h" 
+#include "finance.h" 
 #include "players.h"
 
 #define BOARD_SIZE 40
@@ -22,6 +20,8 @@ typedef enum {
 
 typedef struct {
     Owner owner;
+    int purchase_price;
+    int base_rental;
 } Utility;
 
 typedef struct {
@@ -33,8 +33,8 @@ typedef struct {
 typedef struct {
     Group group;
     int purchase_price;
-    int mortgage_value;
     int base_rental;
+    int mortgage_value;
     int house_const_cost;
     int hotel_const_cost;
     Owner owner;
@@ -45,6 +45,8 @@ typedef struct {
 
 typedef struct {
     Owner owner;
+    int purchase_price;
+    int base_rental;
 } Railway;
 
 typedef enum {
@@ -58,9 +60,10 @@ typedef enum {
     BANK
 } SquareType;
 
-typedef struct {
+typedef struct Square{
     SquareType type;
     char *name;
+    bool purchasable;
 
     union {
         Start start;
@@ -75,5 +78,15 @@ typedef struct {
 } Square;
 
 void draw_board(Square* board);
+int resolve_out_of_bounds(int curr_pos, int offset);
+
+// Getters and Setters are used to avoid long conditional statements 
+// getters 
+Owner get_owner(const Square *s);
+int get_purchase_price(const Square *s);
+int get_rent(const Square *s);
+
+// setters
+void set_owner(Square *s, Owner new_owner);
 
 #endif /* BOARD_H */

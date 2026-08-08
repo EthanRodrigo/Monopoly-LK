@@ -77,7 +77,7 @@ void pass_start(Player* p, GameStat* game){
  * */
 void move(Player* p, int roll, GameStat* game){
     int old_position = p->position;
-    p->position = (old_position + roll) % BOARD_SIZE;   // can't be 40+
+    p->position = resolve_out_of_bounds(old_position, roll);
 
     if (p->position < old_position){
         pass_start(p, game);
@@ -116,14 +116,22 @@ void start_simulation(void){
     printf("%d \t", play_order[3]);
     putc(10, stdout);
 
-    while (game.game_round <= 500){
+//    while (game.game_round <= 500){
+    while (game.game_round <= 3){
         // Player turn; roll, move, action
         for(int i = 0; i < NO_OF_PLAYERS; i++){
             Player* player = &players[play_order[i]];
             int val = roll();
             move(player, val, &game);
+
+            int cash_before = player->cash;
+            player->buy_property(player, board);
+
             printf("roll: %d\n", val);
             printf("player: %d square: %s\n", player->id, board[player->position].name);
+            printf("  -> BOUGHT for %d. Cash %d -> %d. Owner now: %d\n",
+                   cash_before - player->cash, cash_before, player->cash,
+                   get_owner(&board[player->position]));
         }
         printf("Game Round: %d\n", game.game_round);
         if (game.players_passed_go == 15) {
