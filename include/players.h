@@ -20,7 +20,7 @@ typedef struct Player { PlayerType id;
     Owner owner_id;
     int cash;
     int net_worth;
-    int position;
+   int position;
     int player_rounds;
     
     void (*buy_property)(struct Player *p, Square *board);
@@ -29,17 +29,5 @@ typedef struct Player { PlayerType id;
 
 void initialize_players(Player* players);
 bool has_monopoly(Owner owner_id, const Square *board, Group target_group);
-
-// Buying functions for each player
-void aggressive_buy(Player *p, Square *board);
-void conservative_buy(Player *p, Square *board);
-void risky_buy(Player *p, Square *board);
-void opportunistic_buy(Player *p, Square *board);
-
-// Building functions for each player
-void aggressive_build(Player *p, Square *board, Group target_group);
-void conservative_build(Player *p, Square *board, Group target_group);
-void risky_build(Player *p, Square *board, Group target_group);
-void opportunistic_build(Player *p, Square *board, Group target_group);
 
 #endif /* PLAYERS_H */

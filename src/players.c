@@ -79,31 +79,44 @@ void opportunistic_buy(Player *p, Square *board){
     }
 }
 
+// TODO: Paused the build functions till the required extensions are added.
 void aggressive_build(Player *p, Square *board, Group target_group){
-    int i = 1; // 0 is start
-    int next_rent = get_next_highest_rent(p->position, board);
-    while(i < BOARD_SIZE){
-        Square* s = &board[i];
-        i++;
+    int built_something;
 
-        if(s->type != PROPERTY) continue; // skip other squares
-        if(target_group != s->data.property.group) continue; // skip other groups;
-                                                             
-        int house_cost = s->data.property.house_const_cost;
-        int hotel_cost = s->data.property.hotel_const_cost;
+    // Repeat full passes until a pass builds nothing. Even development means
+    // one pass can only add one house per property, so reaching 4 houses
+    // (and then hotels) needs several passes.
 
-        if((p->cash - house_cost) > next_rent && can_build_house(board, s, p->owner_id)){
-            p->cash -= house_cost;
-            s->data.property.no_of_houses++;
-            continue;
+    // This loop keep running till the cash runs out.
+    do {
+        built_something = 0;
+
+        // loop through the board to find other properties in the group
+        for (int i = 1; i < BOARD_SIZE; i++){
+            Square *s = &board[i];
+
+            // skips other types and groups
+            if (s->type != PROPERTY) continue;
+            if (s->data.property.group != target_group) continue;
+
+            int house_cost = s->data.property.house_const_cost;
+            int hotel_cost = s->data.property.hotel_const_cost;
+
+            if (p->cash >= house_cost && can_build_house(board, s, p->owner_id)){
+                p->cash -= house_cost;
+                s->data.property.no_of_houses++;
+                built_something = 1;
+                continue;
+            }
+
+            if (p->cash >= hotel_cost && can_build_hotel(board, s, p->owner_id)){
+                p->cash -= hotel_cost;
+                s->data.property.no_of_houses = 0;   // Rule 10: hotel replaces houses
+                s->data.property.has_hotel = true;
+                built_something = 1;
+            }
         }
-        if((p->cash - hotel_cost) > next_rent && can_build_hotel(board, s, p->owner_id)){
-            p->cash -= hotel_cost;
-            s->data.property.no_of_houses = 0;
-            s->data.property.has_hotel = true;
-            continue;
-        }
-    }
+    } while (built_something);
 }
 
 void conservative_build(Player *p, Square *board, Group target_group){
