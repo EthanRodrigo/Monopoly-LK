@@ -103,7 +103,7 @@ void start_simulation(void){
     Square board[BOARD_SIZE];
     draw_board(board);
 
-    Player players[4];
+    Player players[NO_OF_PLAYERS];
     initialize_players(players);
     
     int play_order[NO_OF_PLAYERS] = {0, 1, 2, 3};

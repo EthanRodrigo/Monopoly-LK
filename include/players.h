@@ -3,6 +3,9 @@
 
 #define NO_OF_PLAYERS 4
 
+#include <stdbool.h>
+#include "types.h"
+
 typedef enum {
     AGGRESSIVE_INVESTOR,
     CONSERVATIVE_BANKER,
@@ -10,35 +13,33 @@ typedef enum {
     OPPORTUNISTIC_TRADER
 } PlayerType;
 
-typedef enum {
-    OG_BANK,
-    PLAYER_1,
-    PLAYER_2,
-    PLAYER_3,
-    PLAYER_4
-} Owner;
-
 // Forward declarion of Square so Player knows it exists
 typedef struct Square Square;
 
-typedef struct Player {
-    PlayerType id;
+typedef struct Player { PlayerType id;
     Owner owner_id;
     int cash;
     int net_worth;
     int position;
     int player_rounds;
     
-    void (*buy_property)(struct Player *p, Square *s);
+    void (*buy_property)(struct Player *p, Square *board);
+    void (*build_property)(struct Player *p, Square *board, Group target_group);
 } Player;
 
 void initialize_players(Player* players);
+bool has_monopoly(Owner owner_id, const Square *board, Group target_group);
 
 // Buying functions for each player
-// TODO: Implement the buys
 void aggressive_buy(Player *p, Square *board);
 void conservative_buy(Player *p, Square *board);
 void risky_buy(Player *p, Square *board);
 void opportunistic_buy(Player *p, Square *board);
+
+// Building functions for each player
+void aggressive_build(Player *p, Square *board, Group target_group);
+void conservative_build(Player *p, Square *board, Group target_group);
+void risky_build(Player *p, Square *board, Group target_group);
+void opportunistic_build(Player *p, Square *board, Group target_group);
 
 #endif /* PLAYERS_H */

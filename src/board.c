@@ -1,5 +1,6 @@
 #include <string.h>
 #include "board.h"
+#include "types.h"
 
 void draw_board(Square* board){
 	Square temp_board[40] = {
@@ -27,7 +28,8 @@ void draw_board(Square* board){
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -43,15 +45,16 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.property = {
 				.group = BROWN,
-				.purchase_price = 1800,
-				.mortgage_value = 900,
+				.purchase_price = 1500,
+				.mortgage_value = 750,
 				.base_rental = 120,
 				.house_const_cost = 500,
 				.hotel_const_cost = 2000,
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -86,7 +89,8 @@ void draw_board(Square* board){
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -102,15 +106,16 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.property = {
 				.group = LIGHT_BLUE,
-				.purchase_price = 2700,
-				.mortgage_value = 1350,
+				.purchase_price = 2500,
+				.mortgage_value = 1250,
 				.base_rental = 200,
 				.house_const_cost = 750,
 				.hotel_const_cost = 3000,
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -120,15 +125,16 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.property = {
 				.group = LIGHT_BLUE,
-				.purchase_price = 3000,
-				.mortgage_value = 1500,
+				.purchase_price = 2500,
+				.mortgage_value = 1250,
 				.base_rental = 220,
 				.house_const_cost = 750,
 				.hotel_const_cost = 3000,
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -156,7 +162,8 @@ void draw_board(Square* board){
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -177,15 +184,16 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.property = {
 				.group = PINK,
-				.purchase_price = 3800,
-				.mortgage_value = 1900,
+				.purchase_price = 3500,
+				.mortgage_value = 1750,
 				.base_rental = 280,
 				.house_const_cost = 1000,
 				.hotel_const_cost = 4000,
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -195,15 +203,16 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.property = {
 				.group = PINK,
-				.purchase_price = 4000,
-				.mortgage_value = 2000,
+				.purchase_price = 3500,
+				.mortgage_value = 1750,
 				.base_rental = 300,
 				.house_const_cost = 1000,
 				.hotel_const_cost = 4000,
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -232,7 +241,8 @@ void draw_board(Square* board){
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -252,15 +262,16 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.property = {
 				.group = ORANGE,
-				.purchase_price = 4700,
-				.mortgage_value = 2350,
+				.purchase_price = 4500,
+				.mortgage_value = 2250,
 				.base_rental = 370,
 				.house_const_cost = 1250,
 				.hotel_const_cost = 5000,
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -270,15 +281,16 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.property = {
 				.group = ORANGE,
-				.purchase_price = 5000,
-				.mortgage_value = 2500,
+				.purchase_price = 4500,
+				.mortgage_value = 2250,
 				.base_rental = 400,
 				.house_const_cost = 1250,
 				.hotel_const_cost = 5000,
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -306,7 +318,8 @@ void draw_board(Square* board){
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -322,15 +335,16 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.property = {
 				.group = RED,
-				.purchase_price = 5800,
-				.mortgage_value = 2900,
+				.purchase_price = 5500,
+				.mortgage_value = 2750,
 				.base_rental = 480,
 				.house_const_cost = 1500,
 				.hotel_const_cost = 6000,
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -340,15 +354,16 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.property = {
 				.group = RED,
-				.purchase_price = 6000,
-				.mortgage_value = 3000,
+				.purchase_price = 5500,
+				.mortgage_value = 2750,
 				.base_rental = 500,
 				.house_const_cost = 1500,
 				.hotel_const_cost = 6000,
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -377,7 +392,8 @@ void draw_board(Square* board){
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -387,15 +403,16 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.property = {
 				.group = YELLOW,
-				.purchase_price = 6800,
-				.mortgage_value = 3400,
+				.purchase_price = 6500,
+				.mortgage_value = 3250,
 				.base_rental = 620,
 				.house_const_cost = 2000,
 				.hotel_const_cost = 8000,
 				.owner = OG_BANK, 
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -416,15 +433,16 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.property = {
 				.group = YELLOW,
-				.purchase_price = 7000,
-				.mortgage_value = 3500,
+				.purchase_price = 6500,
+				.mortgage_value = 3250,
 				.base_rental = 650,
 				.house_const_cost = 2000,
 				.hotel_const_cost = 8000,
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -452,7 +470,8 @@ void draw_board(Square* board){
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -462,15 +481,16 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.property = {
 				.group = GREEN,
-				.purchase_price = 8300,
-				.mortgage_value = 4150,
+				.purchase_price = 8000,
+				.mortgage_value = 4000,
 				.base_rental = 780,
 				.house_const_cost = 2500,
 				.hotel_const_cost = 10000,
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -479,6 +499,7 @@ void draw_board(Square* board){
 			.name = "Ceylinco Insurance",
 			.purchasable = false,
 			.data.insurance = {
+				.name = "Ceylinco Insurance",
 				.type = NULL
 			}
 		},
@@ -489,15 +510,16 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.property = {
 				.group = GREEN,
-				.purchase_price = 8500,
-				.mortgage_value = 4250,
+				.purchase_price = 8000,
+				.mortgage_value = 4000,
 				.base_rental = 800,
 				.house_const_cost = 2500,
 				.hotel_const_cost = 10000,
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -532,7 +554,8 @@ void draw_board(Square* board){
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		},
 
@@ -548,15 +571,16 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.property = {
 				.group = DARK_BLUE,
-				.purchase_price = 12000,
-				.mortgage_value = 6000,
+				.purchase_price = 10000,
+				.mortgage_value = 5000,
 				.base_rental = 1200,
 				.house_const_cost = 3000,
 				.hotel_const_cost = 12000,
 				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
-				.num_of_buildings = 0
+				.no_of_houses = 0,
+				.has_hotel = false
 			}
 		}
 	};
@@ -564,9 +588,8 @@ void draw_board(Square* board){
     memcpy(board, temp_board, sizeof(Square) * 40);
 }
 
-// resolve the roll getting a 40+
 int resolve_out_of_bounds(int curr_pos, int offset){
-    return (curr_pos + offset) % 40;
+    return (curr_pos + offset) % BOARD_SIZE;
 }
 
 Owner get_owner(const Square *s) {
@@ -609,4 +632,44 @@ void set_owner(Square *s, Owner new_owner) {
     }
 }
 
+/* Returns the minimum house count currently built among all developable properties 
+ * in `target_group`. A hotel counts as 4 for this comparison.
+ * */
+int min_houses_in_group(const Square *board, Group target_group) {
+    int group_min = 5;  // higher than any real value (max is 4)
+    for (int i = 0; i < BOARD_SIZE; i++) {
+        const Square *s = &board[i];
+        if (s->type != PROPERTY) continue;
+        if (s->data.property.group != target_group) continue;
 
+        int houses = s->data.property.has_hotel ? 4 : s->data.property.no_of_houses;
+        if (houses < group_min) group_min = houses;
+    }
+    return group_min;
+}
+
+bool can_build_house(const Square *board, const Square *target, Owner owner) {
+    if (target->type != PROPERTY) return false;
+    if (target->data.property.owner != owner) return false;
+    if (!has_monopoly(owner, board, target->data.property.group)) return false;
+    if (target->data.property.has_hotel) return false;             
+    if (target->data.property.no_of_houses >= 4) return false; 
+
+    // only gain a house if it's tied for the fewest houses inits own group right now.
+    int group_min = min_houses_in_group(board, target->data.property.group);
+    return target->data.property.no_of_houses <= group_min;
+}
+
+bool can_build_hotel(const Square *board, const Square *target, Owner owner) {
+    if (target->type != PROPERTY) return false;
+    if (target->data.property.owner != owner) return false;
+    if (!has_monopoly(owner, board, target->data.property.group)) return false;
+    if (target->data.property.has_hotel) return false;             // already a hotel
+    if (target->data.property.no_of_houses != 4) return false; // must have 4 houses first
+
+    // Extending the even-development rule to the hotel step: every property
+    // in the group should already be at 4 houses (or already a hotel) before
+    // any single one converts — otherwise the group stops being "even."
+    int group_min = min_houses_in_group(board, target->data.property.group);
+    return group_min == 4;
+}

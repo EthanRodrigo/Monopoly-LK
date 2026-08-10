@@ -4,19 +4,9 @@
 #include "events.h" 
 #include "finance.h" 
 #include "players.h"
+#include "types.h"
 
 #define BOARD_SIZE 40
-
-typedef enum {
-    BROWN,
-    LIGHT_BLUE,
-    PINK,
-    ORANGE,
-    RED,
-    YELLOW,
-    GREEN,
-    DARK_BLUE
-} Group;
 
 typedef struct {
     Owner owner;
@@ -40,7 +30,9 @@ typedef struct {
     Owner owner;
     bool mortgage_stat;
     bool insurance_stat;
-    int num_of_buildings;
+    int no_of_houses;
+
+    bool has_hotel;
 } Property;
 
 typedef struct {
@@ -79,6 +71,9 @@ typedef struct Square{
 
 void draw_board(Square* board);
 int resolve_out_of_bounds(int curr_pos, int offset);
+int min_houses_in_group(const Square *board, Group target_group);
+bool can_build_house(const Square *board, const Square *target, Owner owner);
+bool can_build_hotel(const Square *board, const Square *target, Owner owner);
 
 // Getters and Setters are used to avoid long conditional statements 
 // getters 

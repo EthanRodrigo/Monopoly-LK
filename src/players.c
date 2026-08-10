@@ -79,6 +79,62 @@ void opportunistic_buy(Player *p, Square *board){
     }
 }
 
+void aggressive_build(Player *p, Square *board, Group target_group){
+    int i = 1; // 0 is start
+    int next_rent = get_next_highest_rent(p->position, board);
+    while(i < BOARD_SIZE){
+        Square* s = &board[i];
+        i++;
+
+        if(s->type != PROPERTY) continue; // skip other squares
+        if(target_group != s->data.property.group) continue; // skip other groups;
+                                                             
+        int house_cost = s->data.property.house_const_cost;
+        int hotel_cost = s->data.property.hotel_const_cost;
+
+        if((p->cash - house_cost) > next_rent && can_build_house(board, s, p->owner_id)){
+            p->cash -= house_cost;
+            s->data.property.no_of_houses++;
+            continue;
+        }
+        if((p->cash - hotel_cost) > next_rent && can_build_hotel(board, s, p->owner_id)){
+            p->cash -= hotel_cost;
+            s->data.property.no_of_houses = 0;
+            s->data.property.has_hotel = true;
+            continue;
+        }
+    }
+}
+
+void conservative_build(Player *p, Square *board, Group target_group){
+    Square* s = &board[p->position];
+
+    int house_cost = s->data.property.house_const_cost;
+    int next_rent = get_next_highest_rent(p->position, board);
+    int hotel_cost = s->data.property.hotel_const_cost;
+
+    // just build one house if 50% of the money remains after the build
+    if((p->cash - house_cost) >= (p->cash / 2) && can_build_house(board, s, p->owner_id)){
+        p->cash -= house_cost;
+        s->data.property.no_of_houses++;
+    }
+        // TODO: Hotel building needs more data added.
+/*        if((p->cash - hotel_cost) < next_rent) && can_build_hotel(board, s, p->owner_id){
+            p->cash - hotel_cost;
+            s->data.property.has_hotel = true;
+        }
+*/
+}
+
+void risky_build(Player *p, Square *board, Group target_group){
+    // They are the same. Build Hotels asap.
+    aggressive_build(p, board, target_group);
+}
+
+void opportunistic_build(Player *p, Square *board, Group target_group){
+    // TODO: Have to wait till the events and all
+}
+
 void initialize_players(Player* players){
 	Player temp_players[NO_OF_PLAYERS] = {
 		[0] = {
@@ -88,7 +144,8 @@ void initialize_players(Player* players){
             .net_worth = 30000,
             .position = START,
             .player_rounds = 0,
-            .buy_property = aggressive_buy
+            .buy_property = aggressive_buy,
+            .build_property = aggressive_build
 		},
 		
 		[1] = {
@@ -98,7 +155,8 @@ void initialize_players(Player* players){
             .net_worth = 30000,
             .position = START,
             .player_rounds = 0,
-            .buy_property = conservative_buy
+            .buy_property = conservative_buy,
+            .build_property = conservative_build
 		},
 		
 		[2] = {
@@ -108,7 +166,8 @@ void initialize_players(Player* players){
             .net_worth = 30000,
             .position = START,
             .player_rounds = 0,
-            .buy_property = risky_buy
+            .buy_property = risky_buy,
+            .build_property = risky_build
 		},
 
 		[3] = {
@@ -118,9 +177,23 @@ void initialize_players(Player* players){
             .net_worth = 30000,
             .position = START,
             .player_rounds = 0,
-            .buy_property = opportunistic_buy
+            .buy_property = opportunistic_buy,
+            .build_property = opportunistic_build
 		},
 	};
     
     memcpy(players, temp_players, sizeof(Player) * NO_OF_PLAYERS);
 } 
+
+bool has_monopoly(Owner owner_id, const Square *board, Group target_group) {
+    for (int i = 0; i < BOARD_SIZE; i++) {
+        const Square *s = &board[i];
+        if (s->type != PROPERTY) continue;
+        if (s->data.property.group != target_group) continue;
+
+        if (s->data.property.owner != owner_id) {
+            return false;   // found one property in this group not owned by p
+        }
+    }
+    return true;   
+}
