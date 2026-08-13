@@ -89,6 +89,10 @@ int resolve_out_of_bounds(int curr_pos, int offset);
 int min_houses_in_group(const Square *board, Group target_group);
 bool can_build_house(const Square *board, const Square *target, Owner owner);
 bool can_build_hotel(const Square *board, const Square *target, Owner owner);
+int property_rent(const Square *s);
+int railway_rent(const Square *board, Owner owner);
+int utility_rent(const Square *board, Owner owner, int dice);
+int count_owned_by_type(const Square *board, Owner owner, SquareType type);
 
 // Getters and Setters are used to avoid long conditional statements 
 // getters 

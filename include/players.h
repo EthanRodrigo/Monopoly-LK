@@ -37,5 +37,6 @@ typedef struct Player { PlayerType id;
 
 void initialize_players(Player* players);
 bool has_monopoly(Owner owner_id, const Square *board, Group target_group);
+Player* find_player(Player *players, Owner id);
 
 #endif /* PLAYERS_H */

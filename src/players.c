@@ -314,3 +314,15 @@ bool has_monopoly(Owner owner_id, const Square *board, Group target_group) {
     }
     return true;   
 }
+
+/* Owner runs OG_BANK, PLAYER_1..PLAYER_4 while players[] is indexed 0..3,
+ * so the mapping is off by one. Kept in one place rather than repeating the
+ * arithmetic at each call site. */
+Player *find_player(Player *players, Owner id){
+    if (id == OG_BANK) return NULL;
+
+    int idx = (int)id - 1;
+    if (idx < 0 || idx >= NO_OF_PLAYERS) return NULL;
+
+    return &players[idx];
+}

@@ -145,6 +145,7 @@ static bool resolve_jail(Player *p, GameStat *game){
         p->in_jail = false;
         printf("  -> JAIL: player %d rolled doubles (%d+%d), released.\n",
                p->id, d1, d2);
+        game->last_roll = val;
         move(p, val, game);   
         return false;         
     }
@@ -164,6 +165,46 @@ static bool resolve_jail(Player *p, GameStat *game){
     return false;
 }
 
+/* Rule 7: landing on an owned square requires payment of rent to the owner.
+ * No rent is collected if the property is mortgaged.
+ *
+ * INTERPRETATION: no rent is charged when a player lands on a square they own
+ * themselves. The spec does not state this, but charging yourself is
+ * meaningless and no Monopoly variant does it.
+ *
+ * TODO: Rule 14 bankruptcy does not exist, so a player who cannot afford rent
+ * is allowed to go negative rather than being clamped - clamping would hide
+ * the condition bankruptcy needs to detect.
+ */
+static void collect_rent(Player *p, Player *players, Square *board,
+                         Square *s, int dice){
+    Owner owner = get_owner(s);
+
+    if (owner == OG_BANK) return;            /* unowned - purchase path */
+    if (owner == p->owner_id) return;        /* own square */
+
+    if (s->type == PROPERTY && s->data.property.mortgage_stat) return;  // is mortgaged
+
+    int rent = 0;
+    switch (s->type){
+        case PROPERTY: rent = property_rent(s);                  break;
+        case RAILWAY:  rent = railway_rent(board, owner);         break;
+        case UTILITY:  rent = utility_rent(board, owner, dice);   break;
+        default:       return;
+    }
+
+    if (rent <= 0) return;
+
+    Player *landlord = find_player(players, owner);
+    if (!landlord) return;
+
+    p->cash -= rent;
+    landlord->cash += rent;
+
+    printf("  -> RENT: player %d paid %d to player %d. Cash %d / %d\n",
+           p->id, rent, landlord->id, p->cash, landlord->cash);
+}
+
 /* Rule 3 step 4: resolve landing action.
  * Runs after move() and before buy_property(), matching the turn sequence:
  * roll -> move -> resolve landing -> purchase -> construct.
@@ -171,7 +212,7 @@ static bool resolve_jail(Player *p, GameStat *game){
  * Only TAX is implemented. Every other case is a placeholder - each needs a
  * subsystem that does not exist yet.
  */
-static void resolve_landing(Player *p, Square *board, GameStat *game){
+static void resolve_landing(Player *p, Player *players, Square *board, GameStat *game){
     Square *s = &board[p->position];
     (void)game;   /* unused until events / jail need round state */
 
@@ -193,6 +234,7 @@ static void resolve_landing(Player *p, Square *board, GameStat *game){
         case PROPERTY:
         case RAILWAY:
         case UTILITY:
+            collect_rent(p, players, board, s, game->last_roll);
             break;
 
         /* TODO: Appendix A - draw the top National Event Card, apply it,
@@ -245,6 +287,7 @@ void start_simulation(void){
     GameStat game;
     game.game_round = 1;
     game.players_passed_go = 0;
+    game.last_roll = 0;
     game.mark_player_game_rounds = mark_game_round;
     game.reset_player_game_rounds = reset_game_round;
 
@@ -273,6 +316,7 @@ void start_simulation(void){
 
             /* Rule 3 step 2-3: roll and move */
             int val = roll();
+            game.last_roll = val;
             move(player, val, &game);
 
             printf("roll: %d\n", val);
@@ -280,7 +324,7 @@ void start_simulation(void){
                    player->id, board[player->position].name);
 
             /* Rule 3 step 4: resolve landing action */
-            resolve_landing(player, board, &game);
+            resolve_landing(player, players, board, &game);
 
             /* Rule 3 step 5: purchase property if eligible */
             int cash_before = player->cash;

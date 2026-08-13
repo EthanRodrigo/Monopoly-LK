@@ -76,7 +76,7 @@ void draw_board(Square* board){
 			.data.railway = {
 				.owner = OG_BANK,
                 .base_rental = 0,
-                .purchase_price = 10 // TODO: find the railway purchase price
+                .purchase_price = 8000 
 			}
 		},
 
@@ -227,7 +227,7 @@ void draw_board(Square* board){
 			.data.railway = {
 				.owner = OG_BANK,
                 .base_rental = 0,
-                .purchase_price = 10 // TODO: find the railway purchase price
+                .purchase_price = 8000
 			}
 		},
 
@@ -377,7 +377,7 @@ void draw_board(Square* board){
 			.data.railway = {
 				.owner = OG_BANK,
                 .base_rental = 0,
-                .purchase_price = 10 // TODO: find the railway purchase price
+                .purchase_price = 8000
 			}
 		},
 
@@ -450,7 +450,7 @@ void draw_board(Square* board){
 		},
 
 		[30] = {
-			.type = START,
+			.type = SPECIAL,
 			.name = "Go To Jail",
 			.purchasable = false,
             .data.special = {
@@ -532,7 +532,7 @@ void draw_board(Square* board){
 			.data.railway = {
 				.owner = OG_BANK,
                 .base_rental = 0,
-                .purchase_price = 10 // TODO: find the railway purchase price
+                .purchase_price = 8000
 			}
 		},
 
@@ -674,4 +674,65 @@ bool can_build_hotel(const Square *board, const Square *target, Owner owner) {
     // any single one converts — otherwise the group stops being "even."
     int group_min = min_houses_in_group(board, target->data.property.group);
     return group_min == 4;
+}
+
+/* Count squares of a given type owned by one player. Used by the railway and
+ * utility rent tables, both of which scale with how many the owner holds. */
+int count_owned_by_type(const Square *board, Owner owner, SquareType type){
+    int count = 0;
+
+    for (int i = 0; i < BOARD_SIZE; i++){
+        if (board[i].type != type) continue;
+        if (get_owner(&board[i]) == owner) count++;
+    }
+    return count;
+}
+
+/* Table 6: residential rent is base rent times a development multiplier.
+ * The multipliers are not linear - 3 houses jumps by 2x and the hotel by 3x -
+ * so this is a lookup table, not arithmetic.
+ *
+ * INTERPRETATION: standard Monopoly doubles base rent on an undeveloped
+ * monopoly. Table 6 lists 1x for "No Buildings" and says nothing about
+ * monopolies, so the literal reading is applied: no doubling.
+ *
+ * Does NOT check ownership or mortgage status - the caller owns those
+ * conditions, so this stays usable for hypothetical rent lookups.
+ */
+int property_rent(const Square *s){
+    if (s->type != PROPERTY) return 0;
+
+    const Property *prop = &s->data.property;
+
+    if (prop->has_hotel) return prop->base_rental * 10;
+
+    /* index = number of houses, 0..4 */
+    static const int multiplier[] = { 1, 2, 3, 5, 7 };
+
+    int houses = prop->no_of_houses;
+    if (houses < 0) houses = 0;
+    if (houses > 4) houses = 4;
+
+    return prop->base_rental * multiplier[houses];
+}
+
+/* Table 7: railway rent depends only on how many of the four stations the
+ * owner holds - 250 / 500 / 1000 / 2000. Base rental is not used. */
+int railway_rent(const Square *board, Owner owner){
+    static const int rent_by_count[] = { 0, 250, 500, 1000, 2000 };
+
+    int owned = count_owned_by_type(board, owner, RAILWAY);
+    if (owned < 0) owned = 0;
+    if (owned > 4) owned = 4;
+
+    return rent_by_count[owned];
+}
+
+/* Table 8: utility rent is 4x the dice value for one utility, 10x for both. */
+int utility_rent(const Square *board, Owner owner, int dice){
+    int owned = count_owned_by_type(board, owner, UTILITY);
+
+    if (owned >= 2) return dice * 10;
+    if (owned == 1) return dice * 4;
+    return 0;
 }
