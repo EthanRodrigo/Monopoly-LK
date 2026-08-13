@@ -61,7 +61,12 @@ void draw_board(Square* board){
 		[4] = {
 			.type = TAX,
 			.name = "Income Tax",
-			.purchasable = false
+			.purchasable = false,
+            .data.tax = {
+                .free_allowance = 15000,
+                .band_width = 10000,
+                .rates = {6, 18, 24, 30}
+            }
 		},
 
 		[5] = {
@@ -139,12 +144,11 @@ void draw_board(Square* board){
 		},
 
 		[10] = {
-			.type = START,
+			.type = SPECIAL,
 			.name = "Jail / Just Visiting",
 			.purchasable = false,
-            .data.start = {
-				.award = 2000,
-                .pass_start = NULL,
+            .data.special = {
+                .kind = JAIL_VISITING
 			}
 		},
 
@@ -295,12 +299,11 @@ void draw_board(Square* board){
 		},
 
 		[20] = {
-			.type = START,
+			.type = SPECIAL,
 			.name = "Free Parking",
 			.purchasable = false,
-            .data.start = {
-				.award = 2000,
-                .pass_start = NULL,
+            .data.special = {
+                .kind = FREE_PARKING
 			}
 		},
 
@@ -450,9 +453,8 @@ void draw_board(Square* board){
 			.type = START,
 			.name = "Go To Jail",
 			.purchasable = false,
-            .data.start = {
-				.award = 2000,
-                .pass_start = NULL,
+            .data.special = {
+                .kind = GO_TO_JAIL
 			}
 		},
 

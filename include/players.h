@@ -2,6 +2,11 @@
 #define PLAYERS_H
 
 #define NO_OF_PLAYERS 4
+// bidding
+#define BUY_BOUGHT      1
+#define BUY_DECLINED    0
+#define BUY_INELIGIBLE (-1)
+#define BID_INCREMENT 250
 
 #include <stdbool.h>
 #include "types.h"
@@ -20,11 +25,14 @@ typedef struct Player { PlayerType id;
     Owner owner_id;
     int cash;
     int net_worth;
-   int position;
+    int position;
     int player_rounds;
+    bool in_jail;
+    int jail_turns;
     
-    void (*buy_property)(struct Player *p, Square *board);
+    int (*buy_property)(struct Player *p, Square *board);
     void (*build_property)(struct Player *p, Square *board, Group target_group);
+    int (*bid)(const struct Player *p, int current_bid, int market_value);
 } Player;
 
 void initialize_players(Player* players);

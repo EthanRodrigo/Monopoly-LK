@@ -2,7 +2,7 @@
 #include "players.h"
 #include "board.h"
 
-int get_next_highest_rent(int curr_pos, const Square *s){
+static int get_next_highest_rent(int curr_pos, const Square *s){
     int highest_rent = 0;
 
     for(int offset = 2; offset <= 12; offset++){
@@ -21,9 +21,9 @@ int get_next_highest_rent(int curr_pos, const Square *s){
 /* @param p A pointer to the current player
  * @param board A pointer to the board to pass to the get_next_highest_rent function
  * */
-void aggressive_buy(Player *p, Square *board){
+int aggressive_buy(Player *p, Square *board){
     Square *s = &board[p->position];    // the current square the player in
-    if (!s->purchasable || get_owner(s)) return;
+    if (!s->purchasable || get_owner(s)) return BUY_INELIGIBLE;
 
     int price = get_purchase_price(s);
     // only save upto highest rent in the next roll
@@ -33,12 +33,14 @@ void aggressive_buy(Player *p, Square *board){
     if (has_enough_cash){
         set_owner(s, p->owner_id);
         p->cash -= price;
+        return BUY_BOUGHT;
     }
+    return BUY_DECLINED;
 }
 
-void conservative_buy(Player *p, Square *board){
+int conservative_buy(Player *p, Square *board){
     Square *s = &board[p->position];    
-    if (!s->purchasable || get_owner(s)) return;
+    if (!s->purchasable || get_owner(s)) return BUY_INELIGIBLE;
 
     int price = get_purchase_price(s);
     int calculated_remaining = p->cash - price; 
@@ -46,26 +48,31 @@ void conservative_buy(Player *p, Square *board){
     if (calculated_remaining >= (p->cash / 2)){
         set_owner(s, p->owner_id);
         p->cash -= price;
+        return BUY_BOUGHT;
     }
+    return BUY_DECLINED;
 }
 
-void risky_buy(Player *p, Square *board){
+int risky_buy(Player *p, Square *board){
     Square *s = &board[p->position];    
-    if (!s->purchasable || get_owner(s)) return;
+    if (!s->purchasable || get_owner(s)) return BUY_INELIGIBLE;
 
     int price = get_purchase_price(s);
     if (p->cash >= price){
         set_owner(s, p->owner_id);
         p->cash -= price;
+        return BUY_BOUGHT;
     }
+    return BUY_DECLINED;
 }
 
-void opportunistic_buy(Player *p, Square *board){
+int opportunistic_buy(Player *p, Square *board){
     Square *s = &board[p->position];
-    if (!s->purchasable || get_owner(s)) return;
+    if (!s->purchasable || get_owner(s)) return BUY_INELIGIBLE;
 
+    // TODO: interpret the low cash as what?
     int price = get_purchase_price(s);
-    if (p->cash < price) return;
+    if (p->cash < price) return BUY_DECLINED;
 
     // TODO: replace with real "projected appreciation vs construction cost"
     // once inflation / market boom-decline / regional development cards exist.
@@ -76,7 +83,57 @@ void opportunistic_buy(Player *p, Square *board){
     if (good_return){
         set_owner(s, p->owner_id);
         p->cash -= price;
+        return BUY_BOUGHT;
     }
+    return BUY_DECLINED;
+}
+
+/* Each bidder raises by the minimum increment according to their behavior and withdraws once its 
+ * own ceiling is passed. Returning 0 means withdraw,
+ * TODO: each player bids exactly 250 than the current bid. Implement an algorithm to decide the 
+ * range which we can bid for each player
+ * */
+
+// bids aggressively until the property reaches 120% of the markset value
+int bid_aggressive(const Player *p, int current_bid, int market_value){
+    int next = current_bid + BID_INCREMENT;
+    int ceiling = market_value * 120 / 100;
+
+    if (next > ceiling) return 0;
+    if (next > p->cash) return 0;        /* Rule-LK 22: cannot bid beyond cash */
+    return next;
+}
+
+// Rule 3.2 - "participates in auctions only when bidding below market value". 
+int bid_conservative(const Player *p, int current_bid, int market_value){
+    int next = current_bid + BID_INCREMENT;
+
+    if (next >= market_value) return 0;  /* strictly below market value */
+    if (next > p->cash) return 0;
+    return next;
+}
+
+// Rule 3.3 - "bids until available cash is exhausted". 
+int bid_risky(const Player *p, int current_bid, int market_value){
+    (void)market_value;                  // market value is not needed here.
+    int next = current_bid + BID_INCREMENT;
+
+    if (next > p->cash) return 0;
+    return next;
+}
+
+/* Rule 3.4 - "prefers discounted auction purchases rather than direct
+ * purchases". No numeric threshold is given.
+ * PLACEHOLDER: treat "discounted" as at most 75% of market value. Not derived
+ * from the spec - be ready to justify at the viva.
+ * TODO: revisit once events.c gives real market valuation. */
+int bid_opportunistic(const Player *p, int current_bid, int market_value){
+    int next = current_bid + BID_INCREMENT;
+    int ceiling = market_value * 75 / 100;
+
+    if (next > ceiling) return 0;
+    if (next > p->cash) return 0;
+    return next;
 }
 
 // TODO: Paused the build functions till the required extensions are added.
@@ -148,6 +205,41 @@ void opportunistic_build(Player *p, Square *board, Group target_group){
     // TODO: Have to wait till the events and all
 }
 
+/* Rule 3.1 - "rapid expansion", "prioritizes completing property groups".
+ * Sitting still blocks both, and bail is 1% of starting cash. Pays. 
+ * */
+bool bail_aggressive(const Player *p){
+    return p->cash >= BAIL_AMOUNT;
+}
+
+/* Rule 3.2 - "minimizes unnecessary risks", "maintains the largest emergency
+ * cash reserve". Declines to spend cash on a penalty and accepts the delay.
+ * INTERPRETATION: the tradeoff is close - three turns is roughly half a lap,
+ * so the expected GO income forgone is around LKR 1,050 against LKR 300 bail,
+ * and late in the game sitting still avoids paying rent. Declared as a
+ * judgement call, not a claim of optimality. */
+bool bail_conservative(const Player *p){
+    (void)p;
+    return false;
+}
+
+/* Rule 3.3 - "highly speculative", "willing to incur significant debt in
+ * pursuit of rapid expansion". Gambles on doubles rather than paying a
+ * certain cost. */
+bool bail_risky(const Player *p){
+    (void)p;
+    return false;
+}
+
+/* Rule 3.4 - "always evaluates expected return before making any financial
+ * decision". Would stay in jail during a bad national event, when being off
+ * the board is safer than moving.
+ * TODO: events.c does not exist, so no bad event can be active. The condition
+ * is vacuously false and the player pays. Replace the stub when events land. */
+static bool bad_event_active(void){
+    return false;   /* TODO: query the active National Event Card */
+}
+
 void initialize_players(Player* players){
 	Player temp_players[NO_OF_PLAYERS] = {
 		[0] = {
@@ -157,8 +249,11 @@ void initialize_players(Player* players){
             .net_worth = 30000,
             .position = START,
             .player_rounds = 0,
+            .in_jail = false,
+            .jail_turns = 0,
             .buy_property = aggressive_buy,
-            .build_property = aggressive_build
+            .build_property = aggressive_build,
+            .bid = bid_aggressive,
 		},
 		
 		[1] = {
@@ -168,8 +263,11 @@ void initialize_players(Player* players){
             .net_worth = 30000,
             .position = START,
             .player_rounds = 0,
+            .in_jail = false,
+            .jail_turns = 0,
             .buy_property = conservative_buy,
-            .build_property = conservative_build
+            .build_property = conservative_build,
+            .bid = bid_conservative,
 		},
 		
 		[2] = {
@@ -179,8 +277,11 @@ void initialize_players(Player* players){
             .net_worth = 30000,
             .position = START,
             .player_rounds = 0,
+            .in_jail = false,
+            .jail_turns = 0,
             .buy_property = risky_buy,
-            .build_property = risky_build
+            .build_property = risky_build,
+            .bid = bid_risky,
 		},
 
 		[3] = {
@@ -190,8 +291,11 @@ void initialize_players(Player* players){
             .net_worth = 30000,
             .position = START,
             .player_rounds = 0,
+            .in_jail = false,
+            .jail_turns = 0,
             .buy_property = opportunistic_buy,
-            .build_property = opportunistic_build
+            .build_property = opportunistic_build,
+            .bid = bid_opportunistic
 		},
 	};
     

@@ -7,6 +7,9 @@
 #include "types.h"
 
 #define BOARD_SIZE 40
+#define JAIL_SQUARE 10
+#define BAIL_AMOUNT 300
+#define MAX_JAIL_TURNS 3
 
 typedef struct {
     Owner owner;
@@ -42,6 +45,16 @@ typedef struct {
 } Railway;
 
 typedef enum {
+    JAIL_VISITING,
+    FREE_PARKING,
+    GO_TO_JAIL
+} SpecialKind;
+
+typedef struct {
+    SpecialKind kind;
+} Special;
+
+typedef enum {
     START,
     PROPERTY,
     EVENT,
@@ -49,7 +62,8 @@ typedef enum {
     RAILWAY,
     UTILITY,
     INSURANCE,
-    BANK
+    BANK,
+    SPECIAL
 } SquareType;
 
 typedef struct Square{
@@ -66,6 +80,7 @@ typedef struct Square{
         Utility utility;
         Insurance insurance;
         Bank bank;
+        Special special;
     } data;
 } Square;
 
