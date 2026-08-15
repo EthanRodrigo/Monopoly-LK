@@ -75,7 +75,7 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.railway = {
 				.owner = OG_BANK,
-                .base_rental = 0,
+                .base_rental = 250, // 1.1.2 table 07 starts from 250
                 .purchase_price = 8000 
 			}
 		},
@@ -178,7 +178,7 @@ void draw_board(Square* board){
 			.data.utility = {
 				.owner = OG_BANK,
                 .purchase_price = 1500,
-                .base_rental = 0
+                .base_rental = 250
 			}
 		},
 
@@ -226,7 +226,7 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.railway = {
 				.owner = OG_BANK,
-                .base_rental = 0,
+                .base_rental = 250,
                 .purchase_price = 8000
 			}
 		},
@@ -376,7 +376,7 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.railway = {
 				.owner = OG_BANK,
-                .base_rental = 0,
+                .base_rental = 250,
                 .purchase_price = 8000
 			}
 		},
@@ -426,7 +426,7 @@ void draw_board(Square* board){
 			.data.utility = {
 				.owner = OG_BANK,
                 .purchase_price = 1500,
-                .base_rental = 0
+                .base_rental = 250
 			}
 		},
 
@@ -531,7 +531,7 @@ void draw_board(Square* board){
 			.purchasable = true,
 			.data.railway = {
 				.owner = OG_BANK,
-                .base_rental = 0,
+                .base_rental = 250,
                 .purchase_price = 8000
 			}
 		},
@@ -616,6 +616,7 @@ int get_purchase_price(const Square *s) {
 
 int get_rent(const Square *s) {
     if (!s->purchasable) return 0;
+
     switch (s->type) {
         case PROPERTY: return s->data.property.base_rental;
         case RAILWAY:  return s->data.railway.base_rental;
@@ -630,10 +631,7 @@ void set_owner(Square *s, Owner new_owner) {
         case PROPERTY: s->data.property.owner = new_owner; break;
         case RAILWAY:  s->data.railway.owner  = new_owner; break;
         case UTILITY:  s->data.utility.owner  = new_owner; break;
-        default: break;
-    }
-}
-
+        default: break; } }
 /* Returns the minimum house count currently built among all developable properties 
  * in `target_group`. A hotel counts as 4 for this comparison.
  * */

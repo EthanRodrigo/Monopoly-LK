@@ -3,13 +3,13 @@
 #include <stdbool.h> 
 #include "events.h" 
 #include "finance.h" 
-#include "players.h"
 #include "types.h"
 
 #define BOARD_SIZE 40
 #define JAIL_SQUARE 10
 #define BAIL_AMOUNT 300
 #define MAX_JAIL_TURNS 3
+#define START_SQUARE 0
 
 typedef struct {
     Owner owner;

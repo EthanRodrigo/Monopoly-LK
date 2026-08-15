@@ -127,7 +127,7 @@ static void send_to_jail(Player *p){
  *
  * @return true if the player takes a normal turn (roll and move) this turn.
  */
-static bool resolve_jail(Player *p, GameStat *game){
+static bool resolve_jail(Player *p){
     if (!p->in_jail) return true;
 
     if (p->cash >= BAIL_AMOUNT){
@@ -139,14 +139,14 @@ static bool resolve_jail(Player *p, GameStat *game){
     }
 
     int d1, d2;
-    int val = roll_dice(&d1, &d2);
+    roll_dice(&d1, &d2);
 
     if (d1 == d2){
         p->in_jail = false;
         printf("  -> JAIL: player %d rolled doubles (%d+%d), released.\n",
                p->id, d1, d2);
-        game->last_roll = val;
-        move(p, val, game);   
+        // player is just released from the jail. And he will stay there for the next round.
+        // The cleanest implementation.
         return false;         
     }
 
@@ -214,7 +214,6 @@ static void collect_rent(Player *p, Player *players, Square *board,
  */
 static void resolve_landing(Player *p, Player *players, Square *board, GameStat *game){
     Square *s = &board[p->position];
-    (void)game;   /* unused until events / jail need round state */
 
     switch (s->type){
         case TAX: {
@@ -226,11 +225,6 @@ static void resolve_landing(Player *p, Player *players, Square *board, GameStat 
             break;
         }
 
-        /* TODO: Rule 7 - landing on an owned property/railway/utility pays
-         * rent to the owner. Blocked on rent calculation: Table 6 needs
-         * building counts, Table 7 needs a count of stations owned by one
-         * player, Table 8 needs the dice value. No rent is collected if the
-         * square is mortgaged. */
         case PROPERTY:
         case RAILWAY:
         case UTILITY:
@@ -309,10 +303,10 @@ void start_simulation(void){
             Player *player = &players[play_order[i]];
 
             /* Rule 3 step 1: resolve outstanding penalties */
-            if (!resolve_jail(player, &game)) continue;
+            if (!resolve_jail(player)) continue;
             
-            /* TODO: Rule 3 step 1 - resolve outstanding penalties (jail
-             * turns, unpaid debt). Needs jail and debt recovery. */
+            /* TODO: Rule 3 step 1 - resolve outstanding penalties (unpaid debt).
+             * Needs debt recovery. */
 
             /* Rule 3 step 2-3: roll and move */
             int val = roll();

@@ -2,6 +2,10 @@
 #include "players.h"
 #include "board.h"
 
+/* This function predicts the next roll's highest rent. But it only considers the base rent.
+ * We can apply that logic but would change a lot of functions pointers creating a lot of 
+ * unused variables and issues like circular dependecies. 
+ * */
 static int get_next_highest_rent(int curr_pos, const Square *s){
     int highest_rent = 0;
 
@@ -205,41 +209,6 @@ void opportunistic_build(Player *p, Square *board, Group target_group){
     // TODO: Have to wait till the events and all
 }
 
-/* Rule 3.1 - "rapid expansion", "prioritizes completing property groups".
- * Sitting still blocks both, and bail is 1% of starting cash. Pays. 
- * */
-bool bail_aggressive(const Player *p){
-    return p->cash >= BAIL_AMOUNT;
-}
-
-/* Rule 3.2 - "minimizes unnecessary risks", "maintains the largest emergency
- * cash reserve". Declines to spend cash on a penalty and accepts the delay.
- * INTERPRETATION: the tradeoff is close - three turns is roughly half a lap,
- * so the expected GO income forgone is around LKR 1,050 against LKR 300 bail,
- * and late in the game sitting still avoids paying rent. Declared as a
- * judgement call, not a claim of optimality. */
-bool bail_conservative(const Player *p){
-    (void)p;
-    return false;
-}
-
-/* Rule 3.3 - "highly speculative", "willing to incur significant debt in
- * pursuit of rapid expansion". Gambles on doubles rather than paying a
- * certain cost. */
-bool bail_risky(const Player *p){
-    (void)p;
-    return false;
-}
-
-/* Rule 3.4 - "always evaluates expected return before making any financial
- * decision". Would stay in jail during a bad national event, when being off
- * the board is safer than moving.
- * TODO: events.c does not exist, so no bad event can be active. The condition
- * is vacuously false and the player pays. Replace the stub when events land. */
-static bool bad_event_active(void){
-    return false;   /* TODO: query the active National Event Card */
-}
-
 void initialize_players(Player* players){
 	Player temp_players[NO_OF_PLAYERS] = {
 		[0] = {
@@ -247,7 +216,7 @@ void initialize_players(Player* players){
             .owner_id = PLAYER_1,
 			.cash = 30000,
             .net_worth = 30000,
-            .position = START,
+            .position = START_SQUARE,
             .player_rounds = 0,
             .in_jail = false,
             .jail_turns = 0,
@@ -261,7 +230,7 @@ void initialize_players(Player* players){
             .owner_id = PLAYER_2,
 			.cash = 30000,
             .net_worth = 30000,
-            .position = START,
+            .position = START_SQUARE,
             .player_rounds = 0,
             .in_jail = false,
             .jail_turns = 0,
@@ -275,7 +244,7 @@ void initialize_players(Player* players){
             .owner_id = PLAYER_3,
 			.cash = 30000,
             .net_worth = 30000,
-            .position = START,
+            .position = START_SQUARE,
             .player_rounds = 0,
             .in_jail = false,
             .jail_turns = 0,
@@ -289,7 +258,7 @@ void initialize_players(Player* players){
             .owner_id = PLAYER_4,
 			.cash = 30000,
             .net_worth = 30000,
-            .position = START,
+            .position = START_SQUARE,
             .player_rounds = 0,
             .in_jail = false,
             .jail_turns = 0,
