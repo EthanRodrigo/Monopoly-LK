@@ -24,4 +24,21 @@ typedef enum {
     PLAYER_4
 } Owner;
 
+typedef enum {
+    LOAN_DO_NOTHING,
+    LOAN_OBTAIN,
+    LOAN_REPAY_PART,
+    LOAN_REPAY_FULL,
+    LOAN_EXTEND,
+    LOAN_INCREASE
+} LoanAction;
+
+/* Rule-LK 5 decision: which transaction, and how much. Carrying both in one
+ * return value means a strategy cannot choose an action and forget the
+ * amount. `amount` is ignored for REPAY_FULL, EXTEND and DO_NOTHING. */
+typedef struct {
+    LoanAction action;
+    int amount;
+} LoanDecision;
+
 #endif /* TYPES_H */

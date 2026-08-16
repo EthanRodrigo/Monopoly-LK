@@ -1,11 +1,12 @@
 #include <stdlib.h>
-#include <stdio.h> 
-#include <stdint.h> 
+#include <stdio.h>
+#include <stdint.h>
 #include <time.h>
 #include "players.h"
 #include "board.h"
 #include "game.h"
 #include "finance.h"
+#include "events.h"
 
 /* Roll both dice.
  * @param d1, d2 Die values, may be NULL if the caller only wants the sum
@@ -40,11 +41,11 @@ void swap_sort(int *order, int *sum, int len){
             if (sum[order[j]] < sum[order[j+1]]){
                 swap(&order[j], &order[j+1]);
             }
-        }    
+        }
     }
 }
 
-/* Find the order which players roll the dices 
+/* Find the order which players roll the dices
  * @param play_order The play_order array to store the order
  * @param sum The sum array to store the sums
  * @param len Length of both arrays. Should be equal for both arrays
@@ -52,14 +53,14 @@ void swap_sort(int *order, int *sum, int len){
 void find_roll_order(int* play_order, int* sum, int len){
     for(int i = 0; i < len; i++){
         sum[play_order[i]] = roll();
-    } 
+    }
     swap_sort(play_order, sum, len);
 
     int i = 0;
     while(i < len){
         int ties = 1;
 
-        // grouping the equal sums to perform re-roll 
+        // grouping the equal sums to perform re-roll
         while(i + ties < len && sum[play_order[i]] == sum[play_order[i + ties]]){
             ties++;
         }
@@ -71,23 +72,28 @@ void find_roll_order(int* play_order, int* sum, int len){
     }
 }
 
+/* Rule 4: passing or landing on GO awards LKR 2,000. */
 void pass_start(Player* p, GameStat* game){
-    printf("Player round %d finishing... \n", p->player_rounds);
     p->player_rounds += 1;
     p->cash += 2000;
+
+    printf("%s passed GO.\n", player_name(p->id));
+    printf("Collected LKR 2,000.\n");
+    printf("Current Balance : LKR %s.\n\n", lkr(p->cash));
 
     game->mark_player_game_rounds(&(game->players_passed_go), p->id);
 }
 
 /* Move the player to the rolled square
  * @param p The pointer to the current player
- * @param b The array of squares (i.e. the board)
  * @param roll The rolled sum of the two dices
- * @return The type of the square 
  * */
 void move(Player* p, int roll, GameStat* game){
     int old_position = p->position;
     p->position = resolve_out_of_bounds(old_position, roll);
+
+    printf("%s moves from Square %d to Square %d.\n\n",
+           player_name(p->id), old_position, p->position);
 
     if (p->position < old_position){
         pass_start(p, game);
@@ -127,14 +133,14 @@ static void send_to_jail(Player *p){
  *
  * @return true if the player takes a normal turn (roll and move) this turn.
  */
-static bool resolve_jail(Player *p){
+static bool resolve_jail(Player *p, Square *board){
     if (!p->in_jail) return true;
 
-    if (p->cash >= BAIL_AMOUNT){
+    if (p->cash >= BAIL_AMOUNT || raise_cash(p, board, BAIL_AMOUNT)){
         p->cash -= BAIL_AMOUNT;
         p->in_jail = false;
-        printf("  -> JAIL: player %d paid bail %d. Cash now %d\n",
-               p->id, BAIL_AMOUNT, p->cash);
+        printf("%s paid bail of LKR %s.\n", player_name(p->id), lkr(BAIL_AMOUNT));
+        printf("Current Balance : LKR %s.\n\n", lkr(p->cash));
         return true;
     }
 
@@ -143,11 +149,11 @@ static bool resolve_jail(Player *p){
 
     if (d1 == d2){
         p->in_jail = false;
-        printf("  -> JAIL: player %d rolled doubles (%d+%d), released.\n",
-               p->id, d1, d2);
-        // player is just released from the jail. And he will stay there for the next round.
-        // The cleanest implementation.
-        return false;         
+        p->jail_turns = 0;
+        printf("%s rolled doubles (%d and %d) and is released from Jail.\n\n",
+               player_name(p->id), d1, d2);
+        // Released only. The player takes a normal turn next round.
+        return false;
     }
 
     p->jail_turns++;
@@ -155,13 +161,13 @@ static bool resolve_jail(Player *p){
     if (p->jail_turns >= MAX_JAIL_TURNS){
         p->in_jail = false;
         p->jail_turns = 0;
-        printf("  -> JAIL: player %d served %d turns, released.\n",
-               p->id, MAX_JAIL_TURNS);
+        printf("%s served %d turns and is released from Jail.\n\n",
+               player_name(p->id), MAX_JAIL_TURNS);
         return false;         /* released, but does not move until next turn */
     }
 
-    printf("  -> JAIL: player %d remains (turn %d of %d).\n",
-           p->id, p->jail_turns, MAX_JAIL_TURNS);
+    printf("%s remains in Jail (turn %d of %d).\n\n",
+           player_name(p->id), p->jail_turns, MAX_JAIL_TURNS);
     return false;
 }
 
@@ -183,7 +189,7 @@ static void collect_rent(Player *p, Player *players, Square *board,
     if (owner == OG_BANK) return;            /* unowned - purchase path */
     if (owner == p->owner_id) return;        /* own square */
 
-    if (s->type == PROPERTY && s->data.property.mortgage_stat) return;  // is mortgaged
+    if (is_mortgaged(s)) return;   /* Rule 7: no rent on a mortgaged square */
 
     int rent = 0;
     switch (s->type){
@@ -198,19 +204,18 @@ static void collect_rent(Player *p, Player *players, Square *board,
     Player *landlord = find_player(players, owner);
     if (!landlord) return;
 
-    p->cash -= rent;
-    landlord->cash += rent;
+    /* Mortgage property first if cash alone cannot cover the rent. */
+    int paid = mortgage_and_pay(p, board, rent);
+    landlord->cash += paid;
 
-    printf("  -> RENT: player %d paid %d to player %d. Cash %d / %d\n",
-           p->id, rent, landlord->id, p->cash, landlord->cash);
+    printf("%s landed on %s.\n\n", player_name(p->id), s->name);
+    printf("Rent Paid : LKR %s.\n\n", lkr(paid));
+    printf("Owner : %s.\n\n", player_name(landlord->id));
 }
 
 /* Rule 3 step 4: resolve landing action.
  * Runs after move() and before buy_property(), matching the turn sequence:
  * roll -> move -> resolve landing -> purchase -> construct.
- *
- * Only TAX is implemented. Every other case is a placeholder - each needs a
- * subsystem that does not exist yet.
  */
 static void resolve_landing(Player *p, Player *players, Square *board, GameStat *game){
     Square *s = &board[p->position];
@@ -219,9 +224,11 @@ static void resolve_landing(Player *p, Player *players, Square *board, GameStat 
         case TAX: {
             /* Rule 11: payment is immediate. Paid to the Bank, which has
              * unlimited money, so the cash simply leaves circulation. */
-            int paid = pay_income_tax(p, &s->data.tax);
-            printf("  -> TAX: player %d paid %d. Cash now %d\n",
-                   p->id, paid, p->cash);
+            /* Rule 11: payment is immediate, and the player mortgages
+             * property if cash alone will not cover it. */
+            int paid = pay_income_tax(p, board, &s->data.tax);
+            printf("%s paid Income Tax of LKR %s.\n", player_name(p->id), lkr(paid));
+            printf("Current Balance : LKR %s.\n\n", lkr(p->cash));
             break;
         }
 
@@ -245,9 +252,8 @@ static void resolve_landing(Player *p, Player *players, Square *board, GameStat 
         /* TODO: Rule-LK 5 - one financial transaction: obtain, repay,
          * refinance, extend, or increase a loan. Needs finance.c. */
         case BANK:
-            break;
-
-       case START:
+            resolve_bank_visit(p, board, game->game_round);
+            break; case START:
             break;
 
         case SPECIAL:
@@ -255,7 +261,8 @@ static void resolve_landing(Player *p, Player *players, Square *board, GameStat 
                 case GO_TO_JAIL:
                     /* Rule 12: immediate transfer, no GO money. */
                     send_to_jail(p);
-                    printf("  -> JAIL: player %d sent to jail.\n", p->id);
+                    printf("%s was sent to Jail.\n", player_name(p->id));
+                    printf("No GO money is collected.\n\n");
                     break;
 
                 case JAIL_VISITING:
@@ -276,13 +283,113 @@ static void resolve_landing(Player *p, Player *players, Square *board, GameStat 
     }
 }
 
+/* Section 5: the block printed before the game begins. */
+static void print_opening(void){
+    printf("MONOPOLY-LK Simulation\n\n");
+    printf("Player 1 : %s\n", player_name(AGGRESSIVE_INVESTOR));
+    printf("Player 2 : %s\n", player_name(CONSERVATIVE_BANKER));
+    printf("Player 3 : %s\n", player_name(RISK_TAKER));
+    printf("Player 4 : %s\n\n", player_name(OPPORTUNISTIC_TRADER));
+    printf("Each player begins with LKR 30,000.\n\n");
+}
+
+/* Section 5: "Determining the First Player". */
+static void print_roll_order(const Player *players, const int *play_order,
+                             const int *sum){
+    for (int i = 0; i < NO_OF_PLAYERS; i++){
+        printf("%s rolls %d.\n", player_name(players[i].id), sum[i]);
+    }
+    printf("\n");
+
+    printf("%s will begin the game.\n\n", player_name(players[play_order[0]].id));
+
+    printf("Turn order:\n");
+    for (int i = 0; i < NO_OF_PLAYERS; i++){
+        printf("%s\n", player_name(players[play_order[i]].id));
+    }
+    printf("\n");
+}
+
+/* Section 5: the summary printed at the end of every completed round. */
+static void print_round_summary(const Player *players, const Square *board,
+                                int round){
+    printf("=============================================\n");
+    printf("Round %d Summary\n", round);
+    printf("=============================================\n\n");
+
+    for (int i = 0; i < NO_OF_PLAYERS; i++){
+        const Player *p = &players[i];
+
+        if (p->bankrupt){
+            printf("%s\n\nBANKRUPT\n\n", player_name(p->id));
+            if (i < NO_OF_PLAYERS - 1){
+                printf("---------------------------------------------\n\n");
+            }
+            continue;
+        }
+
+        printf("%s\n\n", player_name(p->id));
+        printf("Cash : LKR %s\n\n", lkr(p->cash));
+        printf("Net Worth : LKR %s\n\n", lkr(calculate_net_worth(p, board)));
+        printf("Properties : %d\n\n", count_properties(p, board));
+        printf("Hotels : %d\n\n", count_hotels(p, board));
+        /* TODO: outstanding loans need finance.c - always None for now. */
+        printf("Outstanding Loan : None\n\n");
+
+        if (i < NO_OF_PLAYERS - 1){
+            printf("---------------------------------------------\n\n");
+        }
+    }
+    printf("=============================================\n\n");
+}
+
+/* Section 5: "End of Game". Rule 15 declares the player with the highest net
+ * worth the winner when the round limit is reached. */
+static void print_end_of_game(const Player *players, const Square *board){
+    int best = -1;
+    int best_worth = 0;
+
+    for (int i = 0; i < NO_OF_PLAYERS; i++){
+        if (players[i].bankrupt) continue;
+        int worth = calculate_net_worth(&players[i], board);
+        if (best < 0 || worth > best_worth){
+            best_worth = worth;
+            best = i;
+        }
+    }
+
+    if (best < 0){
+        printf("GAME OVER\n\nNO Solvent players remain.\n\n");
+        return;
+    }
+
+    const Player *w = &players[best];
+
+    printf("=============================================\n\n");
+    printf("GAME OVER\n\n");
+    printf("Winner\n\n");
+    printf("%s\n\n", player_name(w->id));
+    printf("Total Cash\n\n");
+    printf("LKR %s\n\n", lkr(w->cash));
+    printf("Total Property Value\n\n");
+    printf("LKR %s\n\n", lkr(total_property_value(w, board)));
+    printf("Outstanding Loans\n\n");
+    printf("None\n\n");
+    printf("Net Worth\n\n");
+    printf("LKR %s\n\n", lkr(best_worth));
+    printf("=============================================\n");
+}
+
 void start_simulation(void){
-    srand((unsigned int)time(NULL));
+    srand(42);   /* fixed seed for reproducible runs while developing */
+
     GameStat game;
-    game.game_round = 1;
+    game.game_round        = 1;
     game.players_passed_go = 0;
-    game.last_roll = 0;
-    game.mark_player_game_rounds = mark_game_round;
+    game.last_roll         = 0;
+    game.inflation_rate    = 0;
+    
+    game.mark_player_game_rounds  = mark_game_round;
     game.reset_player_game_rounds = reset_game_round;
 
     Square board[BOARD_SIZE];
@@ -291,31 +398,35 @@ void start_simulation(void){
     Player players[NO_OF_PLAYERS];
     initialize_players(players);
 
+    print_opening();
+
     int play_order[NO_OF_PLAYERS] = {0, 1, 2, 3};
     int sum[NO_OF_PLAYERS] = {0, 0, 0, 0};
     find_roll_order(play_order, sum, NO_OF_PLAYERS);
 
-    for (int i = 0; i < NO_OF_PLAYERS; i++) printf("%d \t", play_order[i]);
-    putc('\n', stdout);
+    print_roll_order(players, play_order, sum);
 
-    while (game.game_round <= MAX_ROUNDS){
+    while (game.game_round <= MAX_ROUNDS && solvent_count(players) > 1){
         for (int i = 0; i < NO_OF_PLAYERS; i++){
             Player *player = &players[play_order[i]];
 
+            if (player->bankrupt){
+                if (count_properties(player, board) > 0){
+                    liquidate_assets(player, players, board);
+                }
+                continue;
+            }
+
             /* Rule 3 step 1: resolve outstanding penalties */
-            if (!resolve_jail(player)) continue;
-            
-            /* TODO: Rule 3 step 1 - resolve outstanding penalties (unpaid debt).
-             * Needs debt recovery. */
+            if (!resolve_jail(player, board)) continue;
 
             /* Rule 3 step 2-3: roll and move */
             int val = roll();
             game.last_roll = val;
-            move(player, val, &game);
 
-            printf("roll: %d\n", val);
-            printf("player: %d square: %s\n",
-                   player->id, board[player->position].name);
+            printf("%s rolled %d.\n\n", player_name(player->id), val);
+
+            move(player, val, &game);
 
             /* Rule 3 step 4: resolve landing action */
             resolve_landing(player, players, board, &game);
@@ -325,45 +436,79 @@ void start_simulation(void){
             int result = player->buy_property(player, board);
 
             if (result == BUY_BOUGHT){
-                printf("  -> BOUGHT for %d. Cash %d -> %d. Owner: %d\n",
-                       cash_before - player->cash, cash_before, player->cash,
-                       get_owner(&board[player->position]));
+                printf("%s purchased %s for LKR %s.\n",
+                       player_name(player->id),
+                       board[player->position].name,
+                       lkr(cash_before - player->cash));
+                printf("Remaining Balance : LKR %s.\n\n", lkr(player->cash));
             } else if (result == BUY_DECLINED){
                 /* Rule 5: a declined property immediately enters auction */
-                printf("  -> DECLINED %s. Auction starting.\n",
-                       board[player->position].name);
-                int winner = start_auction(players, board, player->position);
-
-                if (winner >= 0){
-                    printf("  -> AUCTION won by player %d. Cash now %d\n",
-                           players[winner].id, players[winner].cash);
-                } else {
-                    printf("  -> AUCTION: no bids, stays with the Bank.\n");
-                }
+                printf("%s declined %s.\n\n",
+                       player_name(player->id), board[player->position].name);
+                start_auction(players, board, player->position);
             }
 
-            /* TODO: Rule 3 step 6 - construct buildings if eligible.
-             * build_property takes a Group, so this needs a loop over all
-             * eight groups, or the signature change discussed (drop the
-             * group, let each strategy pick its own order). */
+            /* Rule 3 step 6: construct buildings if eligible.
+             * Construction is portfolio-scoped rather than tied to where the
+             * player landed - Rule 8 requires only a monopoly, and Rule 3
+             * lists this as a step separate from the landing action and the
+             * purchase. Groups the player holds no monopoly in are a no-op,
+             * since can_build_house checks has_monopoly internally. */
+            for (int g = BROWN; g <= DARK_BLUE; g++){
+                player->build_property(player, board, (Group)g);
+            }
 
             /* TODO: Rule 3 step 7 - complete financial transactions.
-             * Needs finance.c. */
+             * Loans are handled on landing at the Bank (Rule-LK 5), so this
+             * step currently has nothing left to do. */
+
+            /* Rule 14: liabilities exceeding assets also shows up as a
+             * negative net worth once a loan outgrows what it secured. */
+            if (!player->bankrupt && calculate_net_worth(player, board) <= 0){
+                declare_bankrupt(player);
+            }
         }
 
         /* A game round completes only when all four players have individually
          * passed GO - the professor's definition, tracked by bitmask. */
         if (game.players_passed_go == (1 << NO_OF_PLAYERS) - 1){
-            printf("Game Round: %d\n", game.game_round);
-            /* TODO: Section 5 "Round N Summary" block - per player: cash,
-             * net worth, properties, hotels, outstanding loan. */
+
+            /* Rule-LK 4: interest compounds at the end of every complete
+             * round, and loan maturity is measured in complete rounds. */
+            for (int n = 0; n < NO_OF_PLAYERS; n++){
+                accrue_loan_interest(&players[n]);
+                check_loan_default(&players[n], board, game.game_round);
+            }
+
+            print_round_summary(players, board, game.game_round);
+
             game.game_round++;
             game.reset_player_game_rounds(&(game.players_passed_go));
+
+            /* Rule-LK 12: an inflation rate is generated every ten rounds.
+             * Rule-LK 14 applies it as New Value = Previous Value x (1 + rate),
+             * and the effect compounds across the game. */
+            if (game.game_round % 10 == 0){
+                game.inflation_rate = generate_inflation_rate();
+
+                if (game.inflation_rate != 0){
+                    apply_inflation(board, game.inflation_rate);
+
+                    printf("=============================================\n");
+                    printf("Inflation\n");
+                    printf("------------\n");
+                    printf("%+d%%\n", game.inflation_rate);
+                    printf("=============================================\n\n");
+                    /* TODO: Rule-LK 13 also inflates loan interest rates,
+                     * insurance premiums and repair costs. Table 9 ties the
+                     * loan rate to economic condition, which needs the rest
+                     * of events.c. */
+               }
+            }
         }
     }
 
-    /* TODO: Section 5 "End of Game" block - GAME OVER, winner by Rule 15 net
-     * worth, total cash, total property value, outstanding loans, net worth.
-     * TODO: Rule 15 also ends the game early when only one player remains
+    /* TODO: Rule 15 also ends the game early when only one player remains
      * solvent - needs bankruptcy. */
+    print_end_of_game(players, board);
 }

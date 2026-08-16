@@ -12,16 +12,19 @@
 #define START_SQUARE 0
 
 typedef struct {
-    Owner owner;
-    int purchase_price;
-    int base_rental;
-} Utility;
-
-typedef struct {
     int award;
 
     void (*pass_start)(Player *p);
 } Start;
+
+typedef struct {
+    Owner owner;
+    int purchase_price;
+    int base_rental;
+    int mortgage_value;
+    bool mortgage_stat;
+    bool loan_locked;
+} Utility;
 
 typedef struct {
     Group group;
@@ -34,14 +37,17 @@ typedef struct {
     bool mortgage_stat;
     bool insurance_stat;
     int no_of_houses;
-
     bool has_hotel;
+    bool loan_locked;
 } Property;
 
 typedef struct {
     Owner owner;
     int purchase_price;
     int base_rental;
+    int mortgage_value;
+    bool mortgage_stat;
+    bool loan_locked;
 } Railway;
 
 typedef enum {
@@ -93,6 +99,20 @@ int property_rent(const Square *s);
 int railway_rent(const Square *board, Owner owner);
 int utility_rent(const Square *board, Owner owner, int dice);
 int count_owned_by_type(const Square *board, Owner owner, SquareType type);
+
+bool is_mortgaged(const Square *s);
+int  get_mortgage_value(const Square *s);
+void set_mortgaged(Square *s, bool state);
+bool is_developed(const Square *s);
+
+void demolish_buildings(Square *s);
+
+/* Rule-LK 3: pledged collateral becomes Loan Locked - distinct from
+ * mortgaged. Loan locked squares cannot be sold, traded, auctioned or further
+ * mortgaged, but still earn rent and may still be developed. Rule-LK 1 makes
+ * properties, railways and utilities all eligible collateral. */
+bool is_loan_locked(const Square *s);
+void set_loan_locked(Square *s, bool state);
 
 // Getters and Setters are used to avoid long conditional statements 
 // getters 

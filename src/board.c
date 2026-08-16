@@ -734,3 +734,76 @@ int utility_rent(const Square *board, Owner owner, int dice){
     if (owned == 1) return dice * 4;
     return 0;
 }
+
+/* ---- Mortgages --------------------------------------------------------
+ * Sections 1.1.2 and 1.1.3 state that railway stations and utilities may be
+ * mortgaged as well as properties, so these switch on type rather than
+ * assuming Property. Buildings are not mortgageable (Rule-LK 1 excludes them
+ * from collateral, and Appendix B gives no mortgage value for them).
+ */
+bool is_mortgaged(const Square *s){
+    if (!s->purchasable) return false;
+    switch (s->type){
+        case PROPERTY: return s->data.property.mortgage_stat;
+        case RAILWAY:  return s->data.railway.mortgage_stat;
+        case UTILITY:  return s->data.utility.mortgage_stat;
+        default:       return false;
+    }
+}
+
+int get_mortgage_value(const Square *s){
+    if (!s->purchasable) return 0;
+    switch (s->type){
+        case PROPERTY: return s->data.property.mortgage_value;
+        case RAILWAY:  return s->data.railway.mortgage_value;
+        case UTILITY:  return s->data.utility.mortgage_value;
+        default:       return 0;
+    }
+}
+
+void set_mortgaged(Square *s, bool state){
+    if (!s->purchasable) return;
+    switch (s->type){
+        case PROPERTY: s->data.property.mortgage_stat = state; break;
+        case RAILWAY:  s->data.railway.mortgage_stat  = state; break;
+        case UTILITY:  s->data.utility.mortgage_stat  = state; break;
+        default: break;
+    }
+}
+
+/* True if the square carries any buildings. Only properties can be developed
+ * (sections 1.1.2 and 1.1.3 say railways and utilities cannot be). */
+bool is_developed(const Square *s){
+    if (s->type != PROPERTY) return false;
+    return s->data.property.has_hotel || s->data.property.no_of_houses > 0;
+}
+
+bool is_loan_locked(const Square *s){
+    if (!s->purchasable) return false;
+    switch (s->type){
+        case PROPERTY: return s->data.property.loan_locked;
+        case RAILWAY:  return s->data.railway.loan_locked;
+        case UTILITY:  return s->data.utility.loan_locked;
+        default:       return false;
+    }
+}
+
+void set_loan_locked(Square *s, bool state){
+    if (!s->purchasable) return;
+    switch (s->type){
+        case PROPERTY: s->data.property.loan_locked = state; break;
+        case RAILWAY:  s->data.railway.loan_locked  = state; break;
+        case UTILITY:  s->data.utility.loan_locked  = state; break;
+        default: break;
+    }
+}
+
+/* INTERPRETATION: a mortgaged property carries no buildings, so mortgaging
+ * demolishes them. No refund is paid - the spec defines no building sale
+ * mechanism, and inventing a refund rate would be less defensible than
+ * treating the loss as the cost of mortgaging a developed property. */
+void demolish_buildings(Square *s){
+    if (s->type != PROPERTY) return;
+    s->data.property.no_of_houses = 0;
+    s->data.property.has_hotel = false;
+}
