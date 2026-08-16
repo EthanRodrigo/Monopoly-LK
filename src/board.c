@@ -701,17 +701,29 @@ int property_rent(const Square *s){
     if (s->type != PROPERTY) return 0;
 
     const Property *prop = &s->data.property;
+    int rent;
 
-    if (prop->has_hotel) return prop->base_rental * 10;
+    /* Table 6 */
+    if (prop->has_hotel){
+        rent = prop->base_rental * 10;
+    } else {
+        static const int multiplier[] = { 1, 2, 3, 5, 7 };
+        int houses = prop->no_of_houses;
+        if (houses < 0) houses = 0;
+        if (houses > 4) houses = 4;
+        rent = prop->base_rental * multiplier[houses];
+    }
 
-    /* index = number of houses, 0..4 */
-    static const int multiplier[] = { 1, 2, 3, 5, 7 };
+    /* Rule-LK 28: structural damage reduces maximum rent by 25%. */
+    if (prop->structural_damage) rent = rent * 75 / 100;
 
-    int houses = prop->no_of_houses;
-    if (houses < 0) houses = 0;
-    if (houses > 4) houses = 4;
+    /* Rule-LK 26 / Table 3: condition applies only where buildings exist -
+     * an undeveloped square has nothing to deteriorate. */
+    if (prop->has_hotel || prop->no_of_houses > 0){
+        rent = rent * condition_rent_percent(prop->condition) / 100;
+    }
 
-    return prop->base_rental * multiplier[houses];
+    return rent;
 }
 
 /* Table 7: railway rent depends only on how many of the four stations the
@@ -806,4 +818,14 @@ void demolish_buildings(Square *s){
     if (s->type != PROPERTY) return;
     s->data.property.no_of_houses = 0;
     s->data.property.has_hotel = false;
+}
+
+/* Table 3: building condition determines the share of rent collected.
+ * A building below 25% is closed and collects nothing (Rule-LK 26). */
+int condition_rent_percent(int condition){
+    if (condition >= 90) return 100;
+    if (condition >= 75) return  90;
+    if (condition >= 50) return  75;
+    if (condition >= 25) return  50;
+    return 0;                       /* building closed */
 }

@@ -41,6 +41,10 @@ typedef struct Player {
     /* Rule-LK 5: which of the five bank actions this strategy takes.
      * Returns a LoanAction; finance.c executes it. */
     LoanDecision (*loan_action)(const struct Player *p, const Square *board, int max_loan);
+    /* Rule-LK 17: whether this strategy renovates the given property now.
+     * Section 3 states explicit depreciation thresholds for two of the four
+     * players. */
+    bool (*should_renovate)(const struct Player *p, const Square *s);
 } Player;
 
 void initialize_players(Player* players);

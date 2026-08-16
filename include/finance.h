@@ -62,4 +62,10 @@ void declare_bankrupt(Player *p);
 void liquidate_assets(Player *p, Player *players, Square *board);
 int  solvent_count(const Player *players);
 
+/* ---- Depreciation and maintenance (Rules-LK 15-17, 25-29) -------------- */
+void age_properties(Square *board);
+void degrade_buildings(Square *board);
+void perform_maintenance(Player *p, Square *board);
+int  renovate_property(Player *p, Square *s);
+
 #endif /* FINANCE_H */

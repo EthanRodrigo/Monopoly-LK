@@ -187,21 +187,7 @@ static void collect_rent(Player *p, Player *players, Square *board,
     Owner owner = get_owner(s);
 
     if (owner == OG_BANK) return;            /* unowned - purchase path */
-    if (owner == p->owner_id){
-        if (s->type == PROPERTY){
-            printf("[DEBUG] %s on own %s: dep=%d damaged=%d cash=%d cost=%d\n",
-                   player_name(p->id), s->name,
-                   s->data.property.depreciation,
-                   s->data.property.structural_damage,
-                   p->cash, s->data.property.purchase_price / 10);
-        }
-        /* Rule-LK 17: landing on an owned property lets the owner renovate.
-         * No rent is charged on your own square. */
-        if (s->type == PROPERTY && p->should_renovate(p, s)){
-            renovate_property(p, s);
-        }
-        return;
-    }
+    if (owner == p->owner_id) return;        /* own square */
 
     if (is_mortgaged(s)) return;   /* Rule 7: no rent on a mortgaged square */
 
@@ -395,7 +381,7 @@ static void print_end_of_game(const Player *players, const Square *board){
 }
 
 void start_simulation(void){
-    srand(4484);   /* fixed seed for reproducible runs while developing */
+    srand(4442);   /* fixed seed for reproducible runs while developing */
 
     GameStat game;
     game.game_round        = 1;
@@ -416,7 +402,7 @@ void start_simulation(void){
 
     int play_order[NO_OF_PLAYERS] = {0, 1, 2, 3};
     int sum[NO_OF_PLAYERS] = {0, 0, 0, 0};
-    find_roll_order(play_order, sum, NO_OF_PLAYERS);
+    44find_roll_order(play_order, sum, NO_OF_PLAYERS);
 
     print_roll_order(players, play_order, sum);
 
@@ -433,10 +419,6 @@ void start_simulation(void){
 
             /* Rule 3 step 1: resolve outstanding penalties */
             if (!resolve_jail(player, board)) continue;
-            
-            /* Rule-LK 27: maintenance may be performed only at the beginning
-             * of a player's turn. */
-            perform_maintenance(player, board);
 
             /* Rule 3 step 2-3: roll and move */
             int val = roll();
@@ -487,15 +469,9 @@ void start_simulation(void){
             }
         }
 
-        /* A game round completes when every SOLVENT player has passed GO.
-         * Bankrupt players take no turns (Rule 14), so they are excluded from
-         * the requirement rather than marked as having passed. */
-        uint8_t required = 0;
-        for (int n = 0; n < NO_OF_PLAYERS; n++){
-            if (!players[n].bankrupt) required |= (1 << players[n].id);
-        }
-
-        if (required != 0 && (game.players_passed_go & required) == required){
+        /* A game round completes only when all four players have individually
+         * passed GO - the professor's definition, tracked by bitmask. */
+        if (game.players_passed_go == (1 << NO_OF_PLAYERS) - 1){
 
             /* Rule-LK 4: interest compounds at the end of every complete
              * round, and loan maturity is measured in complete rounds. */
@@ -505,11 +481,6 @@ void start_simulation(void){
             }
 
             print_round_summary(players, board, game.game_round);
-
-            /* Rule-LK 15: property age increases every complete round.
-             * Rule-LK 25: building condition decreases every round. */
-            age_properties(board);
-            degrade_buildings(board);
 
             game.game_round++;
             game.reset_player_game_rounds(&(game.players_passed_go));
@@ -540,5 +511,4 @@ void start_simulation(void){
     /* TODO: Rule 15 also ends the game early when only one player remains
      * solvent - needs bankruptcy. */
     print_end_of_game(players, board);
-    printf("Game Rounds: %d\n", game.game_round);
 }

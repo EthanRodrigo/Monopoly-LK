@@ -455,3 +455,134 @@ int solvent_count(const Player *players){
     }
     return n;
 }
+
+/* ---- Property depreciation (Rules-LK 15 to 17) -------------------------
+ * Rule-LK 15: every property records its age, which increases every complete
+ * round.
+ * Rule-LK 16: properties older than fifty rounds without renovation lose 1%
+ * of value every five rounds, to a maximum of 30%.
+ *
+ * INTERPRETATION: depreciation reduces property VALUE, not rent. Rule-LK 16
+ * says "lose value"; Rule-LK 17's mention of renovation "increasing rental"
+ * is read as restoring the rent that structural damage (Rule-LK 28) removed,
+ * not as depreciation having a separate rent effect.
+ */
+void age_properties(Square *board){
+    for (int i = 0; i < BOARD_SIZE; i++){
+        Square *s = &board[i];
+        if (s->type != PROPERTY) continue;
+        if (get_owner(s) == OG_BANK) continue;
+
+        Property *prop = &s->data.property;
+        prop->age++;
+
+        if (prop->age <= DEPRECIATION_START) continue;
+        if ((prop->age - DEPRECIATION_START) % 5 != 0) continue;
+        if (prop->depreciation >= MAX_DEPRECIATION) continue;
+
+        prop->depreciation++;
+        prop->purchase_price = prop->purchase_price * 99 / 100;
+
+        printf("Property\n\n%s\n\nhas depreciated by %d%%.\n\n",
+               s->name, prop->depreciation);
+        printf("Current Value\n\nLKR %s.\n\n", lkr(prop->purchase_price));
+    }
+}
+
+/* Rule-LK 17: landing on an owned property allows the owner to renovate.
+ * Renovation restores depreciation, increases rental and resets property age,
+ * and costs 10% of the property's current market value. */
+int renovate_property(Player *p, Square *s){
+    if (s->type != PROPERTY) return 0;
+
+    Property *prop = &s->data.property;
+
+    int cost = prop->purchase_price / 10;
+    if (p->cash < cost) return 0;
+
+    p->cash -= cost;
+
+    /* restore the value that depreciation removed */
+    if (prop->depreciation > 0){
+        prop->purchase_price = prop->purchase_price * 100
+                             / (100 - prop->depreciation);
+    }
+    prop->depreciation      = 0;
+    prop->age               = 0;
+    prop->structural_damage = false;
+
+    printf("%s renovated %s.\n\n", player_name(p->id), s->name);
+    printf("Renovation Cost : LKR %s.\n\n", lkr(cost));
+
+    return cost;
+}
+
+/* ---- Building condition (Rules-LK 25 to 29) ----------------------------
+ * Rule-LK 25: each building begins at 100% condition and loses 2% at the end
+ * of every round.
+ * Rule-LK 28: twenty consecutive rounds without maintenance causes structural
+ * damage - property value -15%, maximum rent -25%, maintenance costs +50%.
+ */
+void degrade_buildings(Square *board){
+    for (int i = 0; i < BOARD_SIZE; i++){
+        Square *s = &board[i];
+        if (s->type != PROPERTY) continue;
+
+        Property *prop = &s->data.property;
+        if (!prop->has_hotel && prop->no_of_houses == 0) continue;
+
+        prop->condition -= CONDITION_DECAY;
+        if (prop->condition < 0) prop->condition = 0;
+
+        prop->rounds_since_maintenance++;
+
+        if (prop->rounds_since_maintenance > MAX_NEGLECT_ROUNDS &&
+            !prop->structural_damage){
+            prop->structural_damage = true;
+            prop->purchase_price = prop->purchase_price * 85 / 100;
+
+            printf("Structural damage occurred on %s.\n\n", s->name);
+        }
+    }
+}
+
+/* Rule-LK 27: maintenance may be performed only at the beginning of a
+ * player's turn. It restores condition to 100% and costs 5% of construction
+ * cost for a house, 8% for a hotel. Any number of buildings may be maintained
+ * provided funds are available.
+ *
+ * SIMPLIFICATION: section 3 gives no per-strategy maintenance behaviour, so
+ * every player maintains any building it can afford once condition drops
+ * below the 90% band in Table 3 - the point at which rent starts being lost.
+ * Inventing four different maintenance policies would be unsupported.
+ */
+void perform_maintenance(Player *p, Square *board){
+    for (int i = 0; i < BOARD_SIZE; i++){
+        Square *s = &board[i];
+        if (s->type != PROPERTY) continue;
+
+        Property *prop = &s->data.property;
+        if (prop->owner != p->owner_id) continue;
+        if (!prop->has_hotel && prop->no_of_houses == 0) continue;
+        if (prop->condition >= 90) continue;
+
+        int cost;
+        if (prop->has_hotel){
+            cost = prop->hotel_const_cost * 8 / 100;
+        } else {
+            cost = prop->house_const_cost * 5 / 100 * prop->no_of_houses;
+        }
+
+        /* Rule-LK 28: structural damage raises future maintenance by 50%. */
+        if (prop->structural_damage) cost = cost * 150 / 100;
+
+        if (p->cash < cost) continue;
+
+        p->cash -= cost;
+        prop->condition = 100;
+        prop->rounds_since_maintenance = 0;
+
+        printf("%s maintained %s.\n\n", player_name(p->id), s->name);
+        printf("Maintenance Cost : LKR %s.\n\n", lkr(cost));
+    }
+}

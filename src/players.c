@@ -487,6 +487,50 @@ LoanDecision loan_opportunistic(const Player *p, const Square *board, int max_lo
     return d;
 }
 
+/* ---- Renovation (Rule-LK 17) -------------------------------------------
+ * Section 3 states explicit depreciation thresholds for the Conservative
+ * Banker and the Opportunistic Trader, and a qualitative rule for the Risk
+ * Taker. The Aggressive Investor is given none.
+ */
+
+/* Rule 3.1 - no renovation rule is stated for this player.
+ * INTERPRETATION: "never voluntarily sells a property unless bankruptcy is
+ * unavoidable", together with its focus on maximising rental income, implies
+ * it protects its holdings, so it renovates at the first sign of decay.
+ * Inferred, not stated. */
+bool renovate_aggressive(const Player *p, const Square *s){
+    (void)p;
+    return s->data.property.depreciation > 0
+        || s->data.property.structural_damage;
+}
+
+/* Rule 3.2 - "renovates depreciated properties immediately once depreciation
+ * exceeds 10%". Stated verbatim. */
+bool renovate_conservative(const Player *p, const Square *s){
+    (void)p;
+    return s->data.property.depreciation > 10
+        || s->data.property.structural_damage;
+}
+
+/* Rule 3.3 - "ignores property depreciation until repair becomes
+ * unavoidable".
+ * INTERPRETATION: repair becomes unavoidable at the Rule-LK 16 cap of 30%,
+ * past which no further value is lost, or once structural damage has already
+ * cut rent. */
+bool renovate_risky(const Player *p, const Square *s){
+    (void)p;
+    return s->data.property.depreciation >= MAX_DEPRECIATION
+        || s->data.property.structural_damage;
+}
+
+/* Rule 3.4 - "renovates properties once depreciation exceeds 15%". Stated
+ * verbatim. */
+bool renovate_opportunistic(const Player *p, const Square *s){
+    (void)p;
+    return s->data.property.depreciation > 15
+        || s->data.property.structural_damage;
+}
+
 void initialize_players(Player* players){
 	Player temp_players[NO_OF_PLAYERS] = {
 		[0] = {
@@ -506,6 +550,7 @@ void initialize_players(Player* players){
             .build_property = aggressive_build,
             .bid = bid_aggressive,
             .loan_action = loan_aggressive,   
+            .should_renovate = renovate_aggressive,
 	},
 		
 		[1] = {
@@ -525,6 +570,7 @@ void initialize_players(Player* players){
             .build_property = conservative_build,
             .bid = bid_conservative,
             .loan_action = loan_conservative,   
+            .should_renovate = renovate_conservative,
 		},
 		
 		[2] = {
@@ -544,6 +590,7 @@ void initialize_players(Player* players){
             .build_property = risky_build,
             .bid = bid_risky,
             .loan_action = loan_risky,   
+            .should_renovate = renovate_risky,
 		},
 
 		[3] = {
@@ -563,6 +610,7 @@ void initialize_players(Player* players){
             .build_property = opportunistic_build,
             .bid = bid_opportunistic,
             .loan_action = loan_opportunistic,   
+            .should_renovate = renovate_opportunistic,
 		},
 	};
     

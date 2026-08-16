@@ -11,6 +11,11 @@
 #define MAX_JAIL_TURNS 3
 #define START_SQUARE 0
 
+#define MAX_DEPRECIATION      30   /* Rule-LK 16 */
+#define DEPRECIATION_START    50   /* Rule-LK 16: rounds before it begins */
+#define CONDITION_DECAY        2   /* Rule-LK 25: percent per round */
+#define MAX_NEGLECT_ROUNDS    20   /* Rule-LK 28 */
+
 typedef struct {
     int award;
 
@@ -39,6 +44,17 @@ typedef struct {
     int no_of_houses;
     bool has_hotel;
     bool loan_locked;
+    /* Rule-LK 15/16: property age and accumulated depreciation. */
+    int  age;                       /* complete rounds since purchase/renovation */
+    int  depreciation;              /* percent, 0-30 (Rule-LK 16 cap) */
+
+    /* Rule-LK 25-28: building condition.
+     * SIMPLIFICATION: one condition per property rather than per building.
+     * Rule 9 forces even development, so every building on a property is the
+     * same age, and the spec never distinguishes them individually. */
+    int  condition;                 /* percent, starts at 100 */
+    int  rounds_since_maintenance;
+    bool structural_damage;         /* Rule-LK 28 */
 } Property;
 
 typedef struct {
@@ -113,6 +129,8 @@ void demolish_buildings(Square *s);
  * properties, railways and utilities all eligible collateral. */
 bool is_loan_locked(const Square *s);
 void set_loan_locked(Square *s, bool state);
+
+int condition_rent_percent(int condition);
 
 // Getters and Setters are used to avoid long conditional statements 
 // getters 
