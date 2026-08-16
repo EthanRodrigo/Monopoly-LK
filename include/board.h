@@ -1,5 +1,6 @@
 #ifndef BOARD_H
 #define BOARD_H
+
 #include <stdbool.h> 
 #include "events.h" 
 #include "finance.h" 
@@ -11,10 +12,14 @@
 #define MAX_JAIL_TURNS 3
 #define START_SQUARE 0
 
-#define MAX_DEPRECIATION      30   /* Rule-LK 16 */
-#define DEPRECIATION_START    50   /* Rule-LK 16: rounds before it begins */
-#define CONDITION_DECAY        2   /* Rule-LK 25: percent per round */
-#define MAX_NEGLECT_ROUNDS    20   /* Rule-LK 28 */
+#define MAX_DEPRECIATION      30   // Rule-LK 16 
+#define DEPRECIATION_START    50   // Rule-LK 16: rounds before it begins 
+#define CONDITION_DECAY        2   // Rule-LK 25: percent per round
+#define MAX_NEGLECT_ROUNDS    20   // Rule-LK 28 
+
+/* game.h includes this header file, so to avoid circular dependencies pitfall 
+ * forward declarion  is used */
+typedef struct GameStat GameStat;
 
 typedef struct {
     int award;
@@ -33,28 +38,27 @@ typedef struct {
 
 typedef struct {
     Group group;
+    Owner owner;
     int purchase_price;
     int base_rental;
     int mortgage_value;
     int house_const_cost;
     int hotel_const_cost;
-    Owner owner;
     bool mortgage_stat;
     bool insurance_stat;
     int no_of_houses;
     bool has_hotel;
     bool loan_locked;
-    /* Rule-LK 15/16: property age and accumulated depreciation. */
-    int  age;                       /* complete rounds since purchase/renovation */
-    int  depreciation;              /* percent, 0-30 (Rule-LK 16 cap) */
+    int  age;                       // complete rounds since purchase/renovation 
+    int  depreciation;              // percent, 0-30 (Rule-LK 16 cap) 
 
     /* Rule-LK 25-28: building condition.
-     * SIMPLIFICATION: one condition per property rather than per building.
+     * one condition per property rather than per building.
      * Rule 9 forces even development, so every building on a property is the
      * same age, and the spec never distinguishes them individually. */
-    int  condition;                 /* percent, starts at 100 */
+    int  condition;                 // percent, starts at 100 
     int  rounds_since_maintenance;
-    bool structural_damage;         /* Rule-LK 28 */
+    bool structural_damage;         // Rule-LK 28: If maintenance is ignored damage happens 
 } Property;
 
 typedef struct {
@@ -107,38 +111,34 @@ typedef struct Square{
 } Square;
 
 void draw_board(Square* board);
+
 int resolve_out_of_bounds(int curr_pos, int offset);
 int min_houses_in_group(const Square *board, Group target_group);
 bool can_build_house(const Square *board, const Square *target, Owner owner);
 bool can_build_hotel(const Square *board, const Square *target, Owner owner);
-int property_rent(const Square *s);
-int railway_rent(const Square *board, Owner owner);
-int utility_rent(const Square *board, Owner owner, int dice);
+
+int property_rent(const GameStat *g, const Square *s);
+int railway_rent(const GameStat *g, const Square *board, Owner owner);
+int utility_rent(const GameStat *g, const Square *board, Owner owner, int dice);
 int count_owned_by_type(const Square *board, Owner owner, SquareType type);
 
-bool is_mortgaged(const Square *s);
-int  get_mortgage_value(const Square *s);
-void set_mortgaged(Square *s, bool state);
-bool is_developed(const Square *s);
-
 void demolish_buildings(Square *s);
-
-/* Rule-LK 3: pledged collateral becomes Loan Locked - distinct from
- * mortgaged. Loan locked squares cannot be sold, traded, auctioned or further
- * mortgaged, but still earn rent and may still be developed. Rule-LK 1 makes
- * properties, railways and utilities all eligible collateral. */
-bool is_loan_locked(const Square *s);
-void set_loan_locked(Square *s, bool state);
 
 int condition_rent_percent(int condition);
 
 // Getters and Setters are used to avoid long conditional statements 
 // getters 
 Owner get_owner(const Square *s);
-int get_purchase_price(const Square *s);
-int get_rent(const Square *s);
+int get_purchase_price(const GameStat *g, const Square *s);
+int get_rent(const GameStat *g, const Square *s);
+int  get_mortgage_value(const GameStat *g, const Square *s);
+bool is_mortgaged(const Square *s);
+bool is_developed(const Square *s);
+bool is_loan_locked(const Square *s);
 
 // setters
 void set_owner(Square *s, Owner new_owner);
+void set_mortgaged(Square *s, bool state);
+void set_loan_locked(Square *s, bool state);
 
 #endif /* BOARD_H */

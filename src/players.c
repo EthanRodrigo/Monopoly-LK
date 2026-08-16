@@ -2,12 +2,15 @@
 #include <string.h>
 #include "players.h"
 #include "board.h"
+#include "game.h"
+#include "events.h"
+#include "finance.h"
 
 /* This function predicts the next roll's highest rent. But it only considers the base rent.
  * We can apply that logic but would change a lot of functions pointers creating a lot of 
  * unused variables and issues like circular dependecies. 
  * */
-static int get_next_highest_rent(int curr_pos, const Square *s){
+static int get_next_highest_rent(int curr_pos, const Square *s, const GameStat *g){
     int highest_rent = 0;
 
     for(int offset = 2; offset <= 12; offset++){
@@ -16,7 +19,7 @@ static int get_next_highest_rent(int curr_pos, const Square *s){
 
         // should fail if no owner, cz bank is 0 in the enum
         if (next->purchasable && get_owner(next)){ 
-            int rent = get_rent(next);
+            int rent = get_rent(g, next);
             highest_rent = highest_rent < rent ? rent : highest_rent;  
         }
     }
@@ -26,13 +29,13 @@ static int get_next_highest_rent(int curr_pos, const Square *s){
 /* @param p A pointer to the current player
  * @param board A pointer to the board to pass to the get_next_highest_rent function
  * */
-int aggressive_buy(Player *p, Square *board){
+int aggressive_buy(Player *p, Square *board, const GameStat *g){
     Square *s = &board[p->position];    // the current square the player in
     if (!s->purchasable || get_owner(s)) return BUY_INELIGIBLE;
 
-    int price = get_purchase_price(s);
+    int price = get_purchase_price(g, s);
     // only save upto highest rent in the next roll
-    int has_enough_cash = ((p->cash - price) > get_next_highest_rent(p->position, board));
+    int has_enough_cash = ((p->cash - price) > get_next_highest_rent(p->position, board, g));
     
     if (has_enough_cash){
         set_owner(s, p->owner_id);
@@ -42,11 +45,11 @@ int aggressive_buy(Player *p, Square *board){
     return BUY_DECLINED;
 }
 
-int conservative_buy(Player *p, Square *board){
+int conservative_buy(Player *p, Square *board, const GameStat *g){
     Square *s = &board[p->position];    
     if (!s->purchasable || get_owner(s)) return BUY_INELIGIBLE;
 
-    int price = get_purchase_price(s);
+    int price = get_purchase_price(g, s);
     int calculated_remaining = p->cash - price; 
 
     if (calculated_remaining >= (p->cash / 2)){
@@ -57,11 +60,11 @@ int conservative_buy(Player *p, Square *board){
     return BUY_DECLINED;
 }
 
-int risky_buy(Player *p, Square *board){
+int risky_buy(Player *p, Square *board, const GameStat *g){
     Square *s = &board[p->position];    
     if (!s->purchasable || get_owner(s)) return BUY_INELIGIBLE;
 
-    int price = get_purchase_price(s);
+    int price = get_purchase_price(g, s);
     if (p->cash >= price){
         set_owner(s, p->owner_id);
         p->cash -= price;
@@ -70,18 +73,17 @@ int risky_buy(Player *p, Square *board){
     return BUY_DECLINED;
 }
 
-int opportunistic_buy(Player *p, Square *board){
+int opportunistic_buy(Player *p, Square *board, const GameStat *g){
     Square *s = &board[p->position];
     if (!s->purchasable || get_owner(s)) return BUY_INELIGIBLE;
 
-    // TODO: interpret the low cash as what?
-    int price = get_purchase_price(s);
+    int price = get_purchase_price(g, s);
     if (p->cash < price) return BUY_DECLINED;
 
     // TODO: replace with real "projected appreciation vs construction cost"
     // once inflation / market boom-decline / regional development cards exist.
     // For now: treat rent-to-price ratio as a stand-in for "good return."
-    int rent = get_rent(s);
+    int rent = get_rent(g, s);
     int good_return = (rent * 100 >= price * 8);
 
     if (good_return){
@@ -92,11 +94,9 @@ int opportunistic_buy(Player *p, Square *board){
     return BUY_DECLINED;
 }
 
-/* Each bidder raises by the minimum increment according to their behavior and withdraws once its 
- * own ceiling is passed. Returning 0 means withdraw,
- * TODO: each player bids exactly 250 than the current bid. Implement an algorithm to decide the 
- * range which we can bid for each player
- * */
+/* Each bidder raises by the minimum increment according to their behavior and withdraws once 
+ * its own ceiling is passed. Returning 0 means withdraw, each player bids exactly 250 
+ * than the current bid. */
 
 // bids aggressively until the property reaches 120% of the markset value
 int bid_aggressive(const Player *p, int current_bid, int market_value){
@@ -157,7 +157,7 @@ int bid_opportunistic(const Player *p, int current_bid, int market_value){
  * after obtaining a monopoly" and "converts houses into hotels as soon as
  * legally permitted". No cash cushion: the "sufficient funds for one future
  * rent" clause in 3.1 is scoped to purchasing, not construction. */
-void aggressive_build(Player *p, Square *board, Group target_group){
+void aggressive_build(Player *p, Square *board, Group target_group, const GameStat *g){
     int built_something;
 
     /* Repeat full passes until a pass builds nothing. Even development (Rule
@@ -174,8 +174,10 @@ void aggressive_build(Player *p, Square *board, Group target_group){
             if (s->type != PROPERTY) continue;
             if (s->data.property.group != target_group) continue;
 
-            int house_cost = s->data.property.house_const_cost;
-            int hotel_cost = s->data.property.hotel_const_cost;
+            int house_cost = (s->data.property.house_const_cost
+                            * effect_pct(g, s, i, EFF_BUILD_COST, p->owner_id) + 50) / 100;
+            int hotel_cost = (s->data.property.hotel_const_cost
+                            * effect_pct(g, s, i, EFF_BUILD_COST, p->owner_id) + 50) / 100;
 
             if (p->cash >= house_cost && can_build_house(board, s, p->owner_id)){
                 p->cash -= house_cost;
@@ -211,7 +213,7 @@ void aggressive_build(Player *p, Square *board, Group target_group){
  *
  * Rule 3.2 also states "never develops hotels until all outstanding loans
  * have been settled". Now that loans exist this is a real condition. */
-void conservative_build(Player *p, Square *board, Group target_group){
+void conservative_build(Player *p, Square *board, Group target_group, const GameStat *g){
     bool allow_hotels = (p->loan_amount == 0);
 
     for (int i = 1; i < BOARD_SIZE; i++){
@@ -220,8 +222,10 @@ void conservative_build(Player *p, Square *board, Group target_group){
         if (s->type != PROPERTY) continue;
         if (s->data.property.group != target_group) continue;
 
-        int house_cost = s->data.property.house_const_cost;
-        int hotel_cost = s->data.property.hotel_const_cost;
+        int house_cost = (s->data.property.house_const_cost
+                            * effect_pct(g, s, i, EFF_BUILD_COST, p->owner_id) + 50) / 100;
+        int hotel_cost = (s->data.property.hotel_const_cost
+                            * effect_pct(g, s, i, EFF_BUILD_COST, p->owner_id) + 50) / 100;
 
         if ((p->cash - house_cost) >= (p->cash / 2) &&
             can_build_house(board, s, p->owner_id)){
@@ -255,8 +259,8 @@ void conservative_build(Player *p, Square *board, Group target_group){
  * strategies diverge in loan usage ("always borrows the maximum permitted"
  * versus borrowing only for projected rental income) and in selling assets
  * to finance development - not in construction itself. */
-void risky_build(Player *p, Square *board, Group target_group){
-    aggressive_build(p, board, target_group);
+void risky_build(Player *p, Square *board, Group target_group, const GameStat *g){
+    aggressive_build(p, board, target_group, g);
 }
 
 /* Rule 3.4 - the spec states no construction pace, only that this player
@@ -266,7 +270,7 @@ void risky_build(Player *p, Square *board, Group target_group){
  * affordability applies - the condition is vacuously satisfied, not skipped.
  * TODO: once events.c exists, the pace modifiers belong here as a gate on
  * the whole function, not as a per-building cost test. */
-void opportunistic_build(Player *p, Square *board, Group target_group){
+void opportunistic_build(Player *p, Square *board, Group target_group, const GameStat *g){
     int built_something;
 
     do {
@@ -278,8 +282,10 @@ void opportunistic_build(Player *p, Square *board, Group target_group){
             if (s->type != PROPERTY) continue;
             if (s->data.property.group != target_group) continue;
 
-            int house_cost = s->data.property.house_const_cost;
-            int hotel_cost = s->data.property.hotel_const_cost;
+            int house_cost = (s->data.property.house_const_cost
+                            * effect_pct(g, s, i, EFF_BUILD_COST, p->owner_id) + 50) / 100;
+            int hotel_cost = (s->data.property.hotel_const_cost
+                            * effect_pct(g, s, i, EFF_BUILD_COST, p->owner_id) + 50) / 100;
 
             if (p->cash >= house_cost && can_build_house(board, s, p->owner_id)){
                 p->cash -= house_cost;
@@ -306,24 +312,18 @@ void opportunistic_build(Player *p, Square *board, Group target_group){
     } while (built_something);
 }
 
-/* ---- Loan strategies (Rule-LK 5) ---------------------------------------
- * Unusually, section 3 specifies loan behaviour for all four players, so
- * none of these is invented - except where noted for the Opportunistic
- * Trader, whose rule depends on a quantity the spec never defines.
- */
-
 /* Cost of taking every property in a group from its current state to full
  * hotels. Rule 9 requires even development, so each property must reach four
  * houses before Rule 10 permits the hotel that replaces them - both costs
  * are therefore part of the total. */
-static int cost_to_develop(const Square *board, Group g){
+static int cost_to_develop(const Square *board, Group grp, const GameStat *g){
     int total = 0;
 
     for (int i = 0; i < BOARD_SIZE; i++){
         const Square *s = &board[i];
 
         if (s->type != PROPERTY) continue;
-        if (s->data.property.group != g) continue;
+        if (s->data.property.group != grp) continue;
         if (s->data.property.has_hotel) continue;   /* already complete */
 
         int houses_needed = 4 - s->data.property.no_of_houses;
@@ -336,7 +336,7 @@ static int cost_to_develop(const Square *board, Group g){
 /* Largest rent anyone could charge this player right now. Utilities are
  * priced at a roll of 12, the worst case, since a cautious player plans for
  * the largest liability rather than the average one. */
-static int highest_rent_on_board(const Player *p, const Square *board){
+static int highest_rent_on_board(const Player *p, const Square *board, const GameStat *g){
     int highest = 0;
 
     for (int i = 0; i < BOARD_SIZE; i++){
@@ -348,9 +348,9 @@ static int highest_rent_on_board(const Player *p, const Square *board){
 
         int rent = 0;
         switch (s->type){
-            case PROPERTY: rent = property_rent(s);                 break;
-            case RAILWAY:  rent = railway_rent(board, owner);        break;
-            case UTILITY:  rent = utility_rent(board, owner, 12);    break;
+            case PROPERTY: rent = property_rent(g, s);                 break;
+            case RAILWAY:  rent = railway_rent(g, board, owner);        break;
+            case UTILITY:  rent = utility_rent(g, board, owner, 12);    break;
             default: continue;
         }
         if (rent > highest) highest = rent;
@@ -358,15 +358,7 @@ static int highest_rent_on_board(const Player *p, const Square *board){
     return highest;
 }
 
-/* Rule 3.1 - "obtains loans whenever additional funds can increase projected
- * rental income", and "repays loans only when excess cash exceeds twice the
- * outstanding loan amount".
- * INTERPRETATION: additional funds increase projected rental income when the
- * player holds a monopoly that is not yet fully developed, since only a
- * monopoly permits construction (Rule 8). The amount requested is what full
- * development of that group would cost, not the maximum available - borrowing
- * beyond the productive use would only accrue interest. */
-LoanDecision loan_aggressive(const Player *p, const Square *board, int max_loan){
+LoanDecision loan_aggressive(const Player *p, const Square *board, int max_loan, const GameStat *g){
     LoanDecision d = { LOAN_DO_NOTHING, 0 };
 
     if (p->loan_amount > 0){
@@ -376,34 +368,27 @@ LoanDecision loan_aggressive(const Player *p, const Square *board, int max_loan)
 
     if (max_loan <= 0) return d;
 
-    for (int g = BROWN; g <= DARK_BLUE; g++){
-        if (!has_monopoly(p->owner_id, board, (Group)g)) continue;
+    /* additional funds increase projected rental income when the
+     * player holds a monopoly that is not yet fully developed, since only a
+     * monopoly permits construction (Rule 8). The amount requested is what full
+     * development of that group would cost. */
+    for (int grp = BROWN; grp <= DARK_BLUE; grp++){
+        if (!has_monopoly(p->owner_id, board, (Group)grp)) continue;
 
-        int needed = cost_to_develop(board, (Group)g);
-        if (needed <= 0) continue;              /* already all hotels */
-        if (p->cash >= needed) continue;        /* can already afford it */
+        int needed = cost_to_develop(board, (Group)grp, g);
+        if (needed <= 0) continue;              // already all hotels 
+        if (p->cash >= needed) continue;        // can already afford it 
 
         d.action = LOAN_OBTAIN;
-        d.amount = needed - p->cash;            /* borrow only the shortfall */
+        d.amount = needed - p->cash;            // borrow only the shortfall 
         return d;
     }
     return d;
 }
 
 /* Rule 3.2 - "avoids obtaining loans unless bankruptcy is imminent" and
- * "repays loans immediately whenever visiting the Bank if sufficient funds
- * exist".
- * INTERPRETATION: bankruptcy is imminent when cash cannot cover the largest
- * liability the player could face - the highest rent chargeable on the board,
- * or the income tax bill at current cash, whichever is greater. Only the
- * shortfall is borrowed, consistent with a player that avoids debt and
- * "maintains the largest emergency cash reserve".
- *
- * NOTE: the tax term is currently always the smaller of the two, because the
- * bracket thresholds in finance.c keep the bill well below cash. It is kept
- * because retuning those thresholds, or Rule-LK 24's "Income Tax increases by
- * 50%", could make it the binding one. */
-LoanDecision loan_conservative(const Player *p, const Square *board, int max_loan){
+ * "repays loans immediately whenever visiting the Bank if sufficient funds exist". */
+LoanDecision loan_conservative(const Player *p, const Square *board, int max_loan, const GameStat *g){
     LoanDecision d = { LOAN_DO_NOTHING, 0 };
 
     if (p->loan_amount > 0){
@@ -411,18 +396,19 @@ LoanDecision loan_conservative(const Player *p, const Square *board, int max_loa
             d.action = LOAN_REPAY_FULL;
         } else {
             d.action = LOAN_REPAY_PART;
-            d.amount = p->cash;      /* pay down as much as cash allows */
+            d.amount = p->cash;      // pay down as much as cash allows 
         }
         return d;
     }
 
     if (max_loan <= 0) return d;
 
-    int rent_risk = highest_rent_on_board(p, board);
+    // bankruptcy is imminent when cash cannot cover the largest liability player could face
+    int rent_risk = highest_rent_on_board(p, board, g);
     int tax_risk  = projected_income_tax(board, p->cash);
     int liability = rent_risk > tax_risk ? rent_risk : tax_risk;
 
-    if (p->cash < liability){
+    if (p->cash < liability){   
         d.action = LOAN_OBTAIN;
         d.amount = liability - p->cash;
     }
@@ -430,9 +416,8 @@ LoanDecision loan_conservative(const Player *p, const Square *board, int max_loa
 }
 
 /* Rule 3.3 - "always borrows the maximum loan permitted" and "frequently
- * refinances loans to increase available capital". This is the one strategy
- * for which the maximum is literally what the spec asks for. */
-LoanDecision loan_risky(const Player *p, const Square *board, int max_loan){
+ * refinances loans to increase available capital". */
+LoanDecision loan_risky(const Player *p, const Square *board, int max_loan, const GameStat *g){
     LoanDecision d = { LOAN_DO_NOTHING, 0 };
     (void)board;
 
@@ -463,7 +448,7 @@ LoanDecision loan_risky(const Player *p, const Square *board, int max_loan){
  * requests only the development shortfall.
  * TODO: replace with a real projected-return comparison once events.c and
  * market valuation exist. */
-LoanDecision loan_opportunistic(const Player *p, const Square *board, int max_loan){
+LoanDecision loan_opportunistic(const Player *p, const Square *board, int max_loan, const GameStat *g){
     LoanDecision d = { LOAN_DO_NOTHING, 0 };
 
     if (p->loan_amount > 0){
@@ -473,10 +458,10 @@ LoanDecision loan_opportunistic(const Player *p, const Square *board, int max_lo
 
     if (max_loan <= 0) return d;
 
-    for (int g = BROWN; g <= DARK_BLUE; g++){
-        if (!has_monopoly(p->owner_id, board, (Group)g)) continue;
+    for (int grp = BROWN; grp <= DARK_BLUE; grp++){
+        if (!has_monopoly(p->owner_id, board, (Group)grp)) continue;
 
-        int needed = cost_to_develop(board, (Group)g);
+        int needed = cost_to_develop(board, (Group)grp, g);
         if (needed <= 0) continue;
         if (p->cash >= needed) continue;
 
@@ -487,36 +472,23 @@ LoanDecision loan_opportunistic(const Player *p, const Square *board, int max_lo
     return d;
 }
 
-/* ---- Renovation (Rule-LK 17) -------------------------------------------
- * Section 3 states explicit depreciation thresholds for the Conservative
- * Banker and the Opportunistic Trader, and a qualitative rule for the Risk
- * Taker. The Aggressive Investor is given none.
- */
-
 /* Rule 3.1 - no renovation rule is stated for this player.
- * INTERPRETATION: "never voluntarily sells a property unless bankruptcy is
- * unavoidable", together with its focus on maximising rental income, implies
- * it protects its holdings, so it renovates at the first sign of decay.
- * Inferred, not stated. */
+ * Thus implemented as it renovates at the first sign of decay since he focuses on maximizing
+ * rental income. */
 bool renovate_aggressive(const Player *p, const Square *s){
     (void)p;
     return s->data.property.depreciation > 0
         || s->data.property.structural_damage;
 }
 
-/* Rule 3.2 - "renovates depreciated properties immediately once depreciation
- * exceeds 10%". Stated verbatim. */
+// Rule 3.2 - "renovates depreciated properties immediately once depreciation exceeds 10%"
 bool renovate_conservative(const Player *p, const Square *s){
     (void)p;
     return s->data.property.depreciation > 10
         || s->data.property.structural_damage;
 }
 
-/* Rule 3.3 - "ignores property depreciation until repair becomes
- * unavoidable".
- * INTERPRETATION: repair becomes unavoidable at the Rule-LK 16 cap of 30%,
- * past which no further value is lost, or once structural damage has already
- * cut rent. */
+// Rule 3.3 - "ignores property depreciation until repair becomes unavoidable"
 bool renovate_risky(const Player *p, const Square *s){
     (void)p;
     return s->data.property.depreciation >= MAX_DEPRECIATION
@@ -630,9 +602,8 @@ bool has_monopoly(Owner owner_id, const Square *board, Group target_group) {
     return true;   
 }
 
-/* Owner runs OG_BANK, PLAYER_1..PLAYER_4 while players[] is indexed 0..3,
- * so the mapping is off by one. Kept in one place rather than repeating the
- * arithmetic at each call site. */
+/* Owner runs OG_BANK, PLAYER_1..PLAYER_4 while players[] is indexed 0..3, 
+ * so the mapping is off by one. */ 
 Player *find_player(Player *players, Owner id){
     if (id == OG_BANK) return NULL;
 
@@ -701,22 +672,19 @@ int count_hotels(const Player *p, const Square *board){
     return count;
 }
 
-/* Purchase value of every square the player owns - properties, railways and
- * utilities. Buildings are counted separately by calculate_net_worth. */
-int total_property_value(const Player *p, const Square *board){
+// Purchase value of every square the player owns - properties, railways and utilities.
+int total_property_value(const Player *p, const Square *board, const GameStat *g){
     int total = 0;
     for (int i = 0; i < BOARD_SIZE; i++){
         if (!board[i].purchasable) continue;
         if (get_owner(&board[i]) != p->owner_id) continue;
-        total += get_purchase_price(&board[i]);
+        total += get_purchase_price(g, &board[i]);
     }
     return total;
 }
 
-/* Value sunk into houses and hotels. Rule 10 makes a hotel replace four
- * houses, so a developed property contributes either houses or a hotel,
- * never both. */
-static int total_building_value(const Player *p, const Square *board){
+// A developed property contributes either houses or a hotel, never both. 
+static int total_building_value(const Player *p, const Square *board, const GameStat *g){
     int total = 0;
     for (int i = 0; i < BOARD_SIZE; i++){
         if (board[i].type != PROPERTY) continue;
@@ -730,20 +698,16 @@ static int total_building_value(const Player *p, const Square *board){
     return total;
 }
 
-/* Rule 15 net worth. Computed on demand so it can never go stale - the
- * alternative, caching it on Player, would need invalidating on every
- * purchase, build, rent payment and auction. */
-int calculate_net_worth(const Player *p, const Square *board){
+int calculate_net_worth(const Player *p, const Square *board, const GameStat *g){
     int worth = p->cash;
 
-    worth += total_property_value(p, board);   /* property + railway + utility */
-    worth += total_building_value(p, board);
+    worth += total_property_value(p, board, g);   // property + railway + utility 
+    worth += total_building_value(p, board, g);
+    worth -= p->loan_amount;
 
     /* TODO: + Insurance Claims Receivable   (needs finance.c)
-     * TODO: - Outstanding Loans             (needs finance.c)
      * TODO: - Accrued Interest              (needs finance.c)
      * TODO: - Taxes Due                     (needs debt recovery) */
-    worth -= p->loan_amount;
 
     return worth;
 }

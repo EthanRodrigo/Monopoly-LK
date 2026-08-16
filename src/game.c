@@ -7,6 +7,7 @@
 #include "game.h"
 #include "finance.h"
 #include "events.h"
+#include "events.h"
 
 /* Roll both dice.
  * @param d1, d2 Die values, may be NULL if the caller only wants the sum
@@ -72,6 +73,23 @@ void find_roll_order(int* play_order, int* sum, int len){
     }
 }
 
+void mark_game_round(uint8_t* bitmap, int player_id){
+    *bitmap |= (1 << player_id);
+}
+
+void reset_game_round(uint8_t* bitmap){
+    *bitmap = 0;
+}
+
+/* Rule 12: transfers the player to Jail without collecting GO money.
+ * Deliberately does NOT call move() - the backwards jump from square 30 to
+ * square 10 would trip move()'s wraparound test and wrongly award LKR 2,000. */
+static void send_to_jail(Player *p){
+    p->position = JAIL_SQUARE;
+    p->in_jail = true;
+    p->jail_turns = 0;
+}
+
 /* Rule 4: passing or landing on GO awards LKR 2,000. */
 void pass_start(Player* p, GameStat* game){
     p->player_rounds += 1;
@@ -81,7 +99,7 @@ void pass_start(Player* p, GameStat* game){
     printf("Collected LKR 2,000.\n");
     printf("Current Balance : LKR %s.\n\n", lkr(p->cash));
 
-    game->mark_player_game_rounds(&(game->players_passed_go), p->id);
+    mark_game_round(&(game->players_passed_go), p->id);
 }
 
 /* Move the player to the rolled square
@@ -100,43 +118,10 @@ void move(Player* p, int roll, GameStat* game){
     }
 }
 
-void mark_game_round(uint8_t* bitmap, int player_id){
-    *bitmap |= (1 << player_id);
-}
-
-void reset_game_round(uint8_t* bitmap){
-    *bitmap = 0;
-}
-
-/* Rule 12: transfers the player to Jail without collecting GO money.
- * Deliberately does NOT call move() - the backwards jump from square 30 to
- * square 10 would trip move()'s wraparound test and wrongly award LKR 2,000. */
-static void send_to_jail(Player *p){
-    p->position = JAIL_SQUARE;
-    p->in_jail = true;
-    p->jail_turns = 0;
-}
-
-/* Rule 3 step 1: resolve outstanding penalties.
- *
- * Rule 13 gives three exits from jail: pay LKR 300 bail, roll doubles, or
- * remain imprisoned for three turns.
- *
- * SIMPLIFICATION: every player pays bail when they can afford it, and rolls
- * for doubles otherwise. The spec gives no per-strategy guidance on bail, and
- * at 1% of starting cash the decision is not a meaningful differentiator -
- * inventing a split would be unsupported by Rule 13 or section 3.
- *
- * INTERPRETATION: Rule 13 lists "remaining imprisoned for three turns" as an
- * exit in its own right, so no bail is charged on release after three turns.
- * Standard Monopoly charges it; the spec's wording does not.
- *
- * @return true if the player takes a normal turn (roll and move) this turn.
- */
-static bool resolve_jail(Player *p, Square *board){
+static bool resolve_jail(Player *p, Square *board, const GameStat *g){
     if (!p->in_jail) return true;
 
-    if (p->cash >= BAIL_AMOUNT || raise_cash(p, board, BAIL_AMOUNT)){
+    if (p->cash >= BAIL_AMOUNT || raise_cash(p, board, BAIL_AMOUNT, g)){
         p->cash -= BAIL_AMOUNT;
         p->in_jail = false;
         printf("%s paid bail of LKR %s.\n", player_name(p->id), lkr(BAIL_AMOUNT));
@@ -171,19 +156,8 @@ static bool resolve_jail(Player *p, Square *board){
     return false;
 }
 
-/* Rule 7: landing on an owned square requires payment of rent to the owner.
- * No rent is collected if the property is mortgaged.
- *
- * INTERPRETATION: no rent is charged when a player lands on a square they own
- * themselves. The spec does not state this, but charging yourself is
- * meaningless and no Monopoly variant does it.
- *
- * TODO: Rule 14 bankruptcy does not exist, so a player who cannot afford rent
- * is allowed to go negative rather than being clamped - clamping would hide
- * the condition bankruptcy needs to detect.
- */
 static void collect_rent(Player *p, Player *players, Square *board,
-                         Square *s, int dice){
+                         Square *s, int dice, const GameStat *g){
     Owner owner = get_owner(s);
 
     if (owner == OG_BANK) return;            /* unowned - purchase path */
@@ -191,7 +165,7 @@ static void collect_rent(Player *p, Player *players, Square *board,
        /* Rule-LK 17: landing on an owned property lets the owner renovate.
          * No rent is charged on your own square. */
         if (s->type == PROPERTY && p->should_renovate(p, s)){
-            renovate_property(p, s);
+            renovate_property(p, s, g);
         }
         return;
     }
@@ -200,9 +174,9 @@ static void collect_rent(Player *p, Player *players, Square *board,
 
     int rent = 0;
     switch (s->type){
-        case PROPERTY: rent = property_rent(s);                  break;
-        case RAILWAY:  rent = railway_rent(board, owner);         break;
-        case UTILITY:  rent = utility_rent(board, owner, dice);   break;
+        case PROPERTY: rent = property_rent(g, s);                  break;
+        case RAILWAY:  rent = railway_rent(g, board, owner);         break;
+        case UTILITY:  rent = utility_rent(g, board, owner, dice);   break;
         default:       return;
     }
 
@@ -212,7 +186,7 @@ static void collect_rent(Player *p, Player *players, Square *board,
     if (!landlord) return;
 
     /* Mortgage property first if cash alone cannot cover the rent. */
-    int paid = mortgage_and_pay(p, board, rent);
+    int paid = mortgage_and_pay(p, board, rent, g);
     landlord->cash += paid;
 
     printf("%s landed on %s.\n\n", player_name(p->id), s->name);
@@ -229,11 +203,7 @@ static void resolve_landing(Player *p, Player *players, Square *board, GameStat 
 
     switch (s->type){
         case TAX: {
-            /* Rule 11: payment is immediate. Paid to the Bank, which has
-             * unlimited money, so the cash simply leaves circulation. */
-            /* Rule 11: payment is immediate, and the player mortgages
-             * property if cash alone will not cover it. */
-            int paid = pay_income_tax(p, board, &s->data.tax);
+            int paid = pay_income_tax(p, board, &s->data.tax, game);
             printf("%s paid Income Tax of LKR %s.\n", player_name(p->id), lkr(paid));
             printf("Current Balance : LKR %s.\n\n", lkr(p->cash));
             break;
@@ -242,13 +212,19 @@ static void resolve_landing(Player *p, Player *players, Square *board, GameStat 
         case PROPERTY:
         case RAILWAY:
         case UTILITY:
-            collect_rent(p, players, board, s, game->last_roll);
+            collect_rent(p, players, board, s, game->last_roll, game);
             break;
 
-        /* TODO: Appendix A - draw the top National Event Card, apply it,
-         * return it to the bottom of the deck. Needs events.c. */
         case EVENT:
-            draw_event_card(game, p, players, board);
+            if (p->position == 2){
+                int levy = pay_development_fund(p, board, game);
+                printf("%s paid the Community Development Fund.\n",
+                       player_name(p->id));
+                printf("Levy : LKR %s.\n", lkr(levy));
+                printf("Current Balance : LKR %s.\n\n", lkr(p->cash));
+                break;
+            }
+            draw_event_card((GameStat*)game, p, players, board);
             break;
 
         /* TODO: Rule-LK 8 / section 1.2 - purchase or renew one of three
@@ -257,10 +233,8 @@ static void resolve_landing(Player *p, Player *players, Square *board, GameStat 
         case INSURANCE:
             break;
 
-        /* TODO: Rule-LK 5 - one financial transaction: obtain, repay,
-         * refinance, extend, or increase a loan. Needs finance.c. */
         case BANK:
-            resolve_bank_visit(p, board, game->game_round);
+            resolve_bank_visit(p, board, game->game_round, game);
             break; case START:
             break;
 
@@ -320,7 +294,7 @@ static void print_roll_order(const Player *players, const int *play_order,
 
 /* Section 5: the summary printed at the end of every completed round. */
 static void print_round_summary(const Player *players, const Square *board,
-                                int round){
+                                int round, const GameStat *g){
     printf("=============================================\n");
     printf("Round %d Summary\n", round);
     printf("=============================================\n\n");
@@ -338,7 +312,7 @@ static void print_round_summary(const Player *players, const Square *board,
 
         printf("%s\n\n", player_name(p->id));
         printf("Cash : LKR %s\n\n", lkr(p->cash));
-        printf("Net Worth : LKR %s\n\n", lkr(calculate_net_worth(p, board)));
+        printf("Net Worth : LKR %s\n\n", lkr(calculate_net_worth(p, board, g)));
         printf("Properties : %d\n\n", count_properties(p, board));
         printf("Hotels : %d\n\n", count_hotels(p, board));
         /* Rule-LK 4: accrued interest is folded into loan_amount, so this is
@@ -358,13 +332,13 @@ static void print_round_summary(const Player *players, const Square *board,
 
 /* Section 5: "End of Game". Rule 15 declares the player with the highest net
  * worth the winner when the round limit is reached. */
-static void print_end_of_game(const Player *players, const Square *board){
+static void print_end_of_game(const Player *players, const Square *board, const GameStat *g){
     int best = -1;
     int best_worth = 0;
 
     for (int i = 0; i < NO_OF_PLAYERS; i++){
         if (players[i].bankrupt) continue;
-        int worth = calculate_net_worth(&players[i], board);
+        int worth = calculate_net_worth(&players[i], board, g);
         if (best < 0 || worth > best_worth){
             best_worth = worth;
             best = i;
@@ -385,7 +359,7 @@ static void print_end_of_game(const Player *players, const Square *board){
     printf("Total Cash\n\n");
     printf("LKR %s\n\n", lkr(w->cash));
     printf("Total Property Value\n\n");
-    printf("LKR %s\n\n", lkr(total_property_value(w, board)));
+    printf("LKR %s\n\n", lkr(total_property_value(w, board, g)));
     printf("Outstanding Loans\n\n");
     if (w->loan_amount > 0){
         printf("LKR %s\n\n", lkr(w->loan_amount));
@@ -398,18 +372,18 @@ static void print_end_of_game(const Player *players, const Square *board){
 }
 
 void start_simulation(void){
-    srand(4484);   /* fixed seed for reproducible runs while developing */
+    srand(4484);   // fixed seed for reproducible runs 
 
     GameStat game;
     game.game_round        = 1;
     game.players_passed_go = 0;
     game.last_roll         = 0;
     game.inflation_rate    = 0;
+    game.effect_count      = 0;
+    game.construction_blocked_until = 0;
+    for (int i = 0; i < 8; i++) game.group_last_event[i] = -100;
     game.effect_count = 0;
     
-    game.mark_player_game_rounds  = mark_game_round;
-    game.reset_player_game_rounds = reset_game_round;
-
     init_event_deck(&game.deck);
 
     Square board[BOARD_SIZE];
@@ -432,17 +406,17 @@ void start_simulation(void){
 
             if (player->bankrupt){
                 if (count_properties(player, board) > 0){
-                    liquidate_assets(player, players, board);
+                    liquidate_assets(player, players, board, &game);
                 }
                 continue;
             }
 
             /* Rule 3 step 1: resolve outstanding penalties */
-            if (!resolve_jail(player, board)) continue;
+            if (!resolve_jail(player, board, &game)) continue;
             
             /* Rule-LK 27: maintenance may be performed only at the beginning
              * of a player's turn. */
-            perform_maintenance(player, board);
+            perform_maintenance(player, board, &game);
 
             /* Rule 3 step 2-3: roll and move */
             int val = roll();
@@ -457,7 +431,7 @@ void start_simulation(void){
 
             /* Rule 3 step 5: purchase property if eligible */
             int cash_before = player->cash;
-            int result = player->buy_property(player, board);
+            int result = player->buy_property(player, board, &game);
 
             if (result == BUY_BOUGHT){
                 printf("%s purchased %s for LKR %s.\n",
@@ -469,26 +443,19 @@ void start_simulation(void){
                 /* Rule 5: a declined property immediately enters auction */
                 printf("%s declined %s.\n\n",
                        player_name(player->id), board[player->position].name);
-                start_auction(players, board, player->position);
+                start_auction(players, board, player->position, &game);
             }
 
-            /* Rule 3 step 6: construct buildings if eligible.
-             * Construction is portfolio-scoped rather than tied to where the
-             * player landed - Rule 8 requires only a monopoly, and Rule 3
-             * lists this as a step separate from the landing action and the
-             * purchase. Groups the player holds no monopoly in are a no-op,
-             * since can_build_house checks has_monopoly internally. */
-            for (int g = BROWN; g <= DARK_BLUE; g++){
-                player->build_property(player, board, (Group)g);
+            /* Rule 3 step 6: construct buildings if eligible. */
+            if (construction_allowed(&game)){
+                for (int grp = BROWN; grp <= DARK_BLUE; grp++){
+                    player->build_property(player, board, (Group)grp, &game);
+                }
             }
-
-            /* TODO: Rule 3 step 7 - complete financial transactions.
-             * Loans are handled on landing at the Bank (Rule-LK 5), so this
-             * step currently has nothing left to do. */
 
             /* Rule 14: liabilities exceeding assets also shows up as a
              * negative net worth once a loan outgrows what it secured. */
-            if (!player->bankrupt && calculate_net_worth(player, board) <= 0){
+            if (!player->bankrupt && calculate_net_worth(player, board, &game) <= 0){
                 declare_bankrupt(player);
             }
         }
@@ -507,10 +474,10 @@ void start_simulation(void){
              * round, and loan maturity is measured in complete rounds. */
             for (int n = 0; n < NO_OF_PLAYERS; n++){
                 accrue_loan_interest(&players[n]);
-                check_loan_default(&players[n], board, game.game_round);
+                check_loan_default(&players[n], board, game.game_round, &game);
             }
 
-            print_round_summary(players, board, game.game_round);
+            print_round_summary(players, board, game.game_round, &game);
 
             /* Rule-LK 15: property age increases every complete round.
              * Rule-LK 25: building condition decreases every round. */
@@ -518,7 +485,20 @@ void start_simulation(void){
             degrade_buildings(board);
 
             game.game_round++;
-            game.reset_player_game_rounds(&(game.players_passed_go));
+            reset_game_round(&(game.players_passed_go));
+
+            /* Expire finished modifiers before new ones are added. */
+            purge_expired(&game);
+
+            /* Rule-LK 18: one national economic event every fifteen rounds.
+             * Rule-LK 24: one government regulation every twenty rounds.
+             * Rule-LK 30: the property market is reviewed every ten. */
+            if (game.game_round % 15 == 0) trigger_economic_event(&game);
+            if (game.game_round % 20 == 0) trigger_regulation(&game);
+            if (game.game_round % 10 == 0) review_property_market(&game);
+
+            /* Rule-LK 36: display the active market conditions each round. */
+            print_market_conditions(&game);
 
             /* Rule-LK 12: an inflation rate is generated every ten rounds.
              * Rule-LK 14 applies it as New Value = Previous Value x (1 + rate),
@@ -542,9 +522,6 @@ void start_simulation(void){
             }
         }
     }
-
-    /* TODO: Rule 15 also ends the game early when only one player remains
-     * solvent - needs bankruptcy. */
-    print_end_of_game(players, board);
+    print_end_of_game(players, board, &game);
     printf("Game Rounds: %d\n", game.game_round);
 }

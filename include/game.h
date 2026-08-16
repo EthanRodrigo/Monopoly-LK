@@ -8,36 +8,20 @@
 
 #define MAX_ROUNDS 500
 
-// TODO: remove if ain't using
-typedef struct {
-    Square board[BOARD_SIZE];
-    Player players[NO_OF_PLAYERS];
-    int current_player;
-} Game;
-
 typedef struct GameStat {
-    uint8_t players_passed_go;   /* a bitmap for all 4 players */
+    uint8_t players_passed_go;    // a bitmap to maintain players passing GO
     int game_round;
-    int last_roll;               /* dice total from the most recent move,
-                                  * needed for utility rent (Table 8) */
+    int last_roll;               // dice total from the most recent move,
+    int inflation_rate; //The inflation rate currently in force, as a percentage.
+    EventDeck deck;     // National Event Cards deck
+    int construction_blocked_until;     // Some events blocks construction
 
-    /* Rule-LK 12: the inflation rate currently in force, as a percentage.
-     * Redrawn every ten rounds and applied once, compounding (Rule-LK 14). */
-    int inflation_rate;
+    /* Rule-LK 33: a group affected by a boom or decline cannot be selected
+     * again until thirty rounds have elapsed. */
+    int group_last_event[8];    
 
-    /* Appendix A: the twenty National Event Cards, drawn from the top and
-     * returned to the bottom. */
-    EventDeck deck;
-
-    /* Rules-LK 18, 24, 30-34 and Table 4: temporary modifiers with expiry
-     * rounds. Base values on the board are never mutated by these, because
-     * integer percentage changes are not reversible - the getters apply
-     * them at read time instead. */
     Effect effects[MAX_EFFECTS];
     int    effect_count;
-
-    void (*mark_player_game_rounds)(uint8_t* bitmap, int player_id);
-    void (*reset_player_game_rounds)(uint8_t* bitmap);
 } GameStat;
 
 void find_roll_order(int* play_order, int* sum, int len);

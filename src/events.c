@@ -2,29 +2,8 @@
 #include <stdio.h>
 #include "board.h"
 #include "players.h"
-/* game.h defines struct GameStat, which events.h only forward-declares -
- * the effect ledger and the event deck both live on it. */
 #include "game.h"
 #include "events.h"
-
-/* ---- Inflation (Rules-LK 12 to 14) -------------------------------------
- *
- * Rule-LK 12: every ten rounds an inflation rate is generated from a fixed
- * set of possible values. Negative values indicate deflation.
- *
- * Rule-LK 13: inflation modifies property prices, building costs, hotel
- * costs, rental values, insurance premiums, repair costs and loan interest
- * rates. Existing loan rates remain unchanged.
- *
- * Rule-LK 14: New Value = Previous Value x (1 + Inflation Rate).
- *
- * DESIGN NOTE: inflation is permanent and compounding, so unlike the timed
- * economic events it rewrites the board's stored values directly rather than
- * being held as a temporary modifier. Temporary effects cannot mutate stored
- * values, because integer percentage changes are not reversible - a value
- * scaled up and back down does not always return to its starting point.
- * Inflation is never reversed, so that objection does not apply here.
- */
 
 static const int inflation_rates[INFLATION_RATE_COUNT] = { -3, 0, 2, 5, 8, 12 };
 
@@ -32,9 +11,6 @@ int generate_inflation_rate(void){
     return inflation_rates[rand() % INFLATION_RATE_COUNT];
 }
 
-/* Rule-LK 14 applied with integer arithmetic, as the program requirements
- * demand. Truncation is toward zero, so repeated small deflations erode a
- * value slightly faster than equivalent inflations restore it. */
 int inflate_value(int value, int rate){
     return value + (value * rate / 100);
 }
@@ -64,8 +40,6 @@ void apply_inflation(Square *board, int rate){
 
                 r->purchase_price = inflate_value(r->purchase_price, rate);
                 r->mortgage_value = inflate_value(r->mortgage_value, rate);
-                /* base_rental is a lookahead estimate only - actual railway
-                 * rent comes from Table 7, which is a fixed schedule. */
                 r->base_rental    = inflate_value(r->base_rental, rate);
                 break;
             }
@@ -88,19 +62,6 @@ void apply_inflation(Square *board, int rate){
      * Neither system exists yet. */
 }
 
-/* ---- Active effect ledger ----------------------------------------------
- * Rule-LK 34: when multiple events affect the same target, all percentage
- * changes are cumulative. The spec does not say whether that means additive
- * or compounding.
- *
- * INTERPRETATION: additive. Percentage points are summed and a single
- * multiplication is applied at the end. Two reasons: integer addition is
- * order-independent, so the result does not depend on the order effects
- * happen to sit in the array; and one multiplication means one truncation
- * instead of one per effect, which is materially more accurate under the
- * integer-only arithmetic the assignment requires.
- */
-
 void add_effect(GameStat *g, const char *label, EffectTarget target,
                 EffectScope scope, int scope_id, int delta_pct,
                 int current_round, int duration){
@@ -117,8 +78,7 @@ void add_effect(GameStat *g, const char *label, EffectTarget target,
 }
 
 /* Remove expired effects. Swap-and-pop rather than shifting down: order does
- * not matter because the percentages are summed, so overwriting a dead slot
- * with the last live one is safe and O(1). */
+ * not matter because the percentages are summed. */
 void purge_expired(GameStat *g){
     for (int i = 0; i < g->effect_count; ){
         if (g->game_round >= g->effects[i].expires_round){
@@ -155,6 +115,9 @@ static bool effect_applies(const Effect *e, const Square *s, int square_index,
     }
 }
 
+/* Total percentage adjustment applying to one square for one viewer.
+ * Returns 100 when nothing applies, so the caller computes
+ *   value = (base * pct + 50) / 100 */
 int effect_pct(const GameStat *g, const Square *s, int square_index,
                EffectTarget target, Owner viewer){
     int total = 100;
@@ -192,39 +155,6 @@ void print_market_conditions(const GameStat *g){
     printf("Inflation\n------------\n%+d%%\n\n", g->inflation_rate);
     printf("=========================================\n\n");
 }
-
-/* ---- National Event Cards (Appendix A) ---------------------------------
- * A deck of twenty cards. When a player lands on an Event square the top
- * card is drawn, executed, and returned to the bottom of the deck.
- *
- * Only the cards whose effects are immediate are implemented so far - those
- * that move cash or damage a property need nothing beyond what already
- * exists. The durational cards are listed as TODO against the effect ledger,
- * which requires the value getters to consult GameStat before it can do
- * anything.
- */
-typedef enum {
-    CARD_TAX_AMNESTY,
-    CARD_GOVERNMENT_GRANT,
-    CARD_NATIONAL_DISASTER,
-    CARD_HEAVY_FLOODS,
-    CARD_TOURISM_HYPE,
-    CARD_FUEL_SHORTAGE,
-    CARD_POLITICAL_RALLY,
-    CARD_STOCK_MARKET_RISE,
-    CARD_ECONOMIC_DOWNTURN,
-    CARD_HOUSING_SUBSIDY,
-    CARD_INTEREST_RATE_CUT,
-    CARD_INTEREST_RATE_INCREASE,
-    CARD_POWER_FAILURE,
-    CARD_FOREIGN_FUNDING,
-    CARD_PORT_EXPANSION,
-    CARD_FESTIVAL_SEASON,
-    CARD_LABOUR_STRIKE,
-    CARD_INSURANCE_DISCOUNT,
-    CARD_PROPERTY_REVALUATION,
-    CARD_CURRENCY_DEPRECIATION
-} EventCard;
 
 static const char *card_name(EventCard c){
     switch (c){
@@ -314,10 +244,7 @@ void draw_event_card(GameStat *g, Player *p, Player *players, Square *board){
 
         case CARD_NATIONAL_DISASTER:
         case CARD_HEAVY_FLOODS: {
-            /* "Random developed property damaged". Rule-LK 28 already models
-             * damage as reduced value and reduced maximum rent, so the same
-             * state is reused here rather than inventing a second one.
-             * TODO: Rule-LK 10 says an insured property is compensated
+             /* TODO: Rule-LK 10 says an insured property is compensated
              * instead. Insurance is not implemented. */
             Square *victim = random_developed_property(board);
 
@@ -337,35 +264,277 @@ void draw_event_card(GameStat *g, Player *p, Player *players, Square *board){
             break;
         }
 
-        /* ---- Not yet implemented ----
-         * Every card below needs the effect ledger to be consulted by the
-         * value getters, which requires threading GameStat into
-         * get_purchase_price, property_rent, get_mortgage_value and the
-         * construction costs. The ledger and add_effect exist; the getters
-         * do not read them yet.
-         *
-         * CARD_TOURISM_HYPE           hotels double rent, 5 rounds
-         * CARD_FUEL_SHORTAGE          railway rent doubles, 5 rounds
-         * CARD_POLITICAL_RALLY        one property closed, 2 rounds
-         * CARD_STOCK_MARKET_RISE      all property values +10%
-         * CARD_ECONOMIC_DOWNTURN      property values -15%
-         * CARD_HOUSING_SUBSIDY        house construction cost -30%
-         * CARD_INTEREST_RATE_CUT      loan interest -2%
-         * CARD_INTEREST_RATE_INCREASE loan interest +2%
-         * CARD_POWER_FAILURE          utility income halved, 3 rounds
-         * CARD_FOREIGN_FUNDING        commercial property values +15%
-         * CARD_PORT_EXPANSION         railway station values +20%
-         * CARD_FESTIVAL_SEASON        hotels receive 50% additional rent
-         * CARD_LABOUR_STRIKE          construction suspended, 2 rounds
-         * CARD_INSURANCE_DISCOUNT     premiums -20%
-         * CARD_PROPERTY_REVALUATION   random group appreciates 15%
-         * CARD_CURRENCY_DEPRECIATION  construction costs +10%
-         */
+        /* ---- Durational effects, applied through the ledger ---- */
+
+        case CARD_TOURISM_HYPE:
+            add_effect(g, "Tourism Hype", EFF_RENT, SCOPE_PLAYER,
+                       p->owner_id, 100, g->game_round, 5);
+            printf("Hotels earn double rent for 5 rounds.\n\n");
+            break;
+
+        case CARD_FESTIVAL_SEASON:
+            add_effect(g, "Festival Season", EFF_RENT, SCOPE_PLAYER,
+                       p->owner_id, 50, g->game_round, 15);
+            printf("Hotels receive 50%% additional rent.\n\n");
+            break;
+
+        case CARD_FUEL_SHORTAGE:
+            add_effect(g, "Fuel Shortage", EFF_RENT, SCOPE_SQUARE_TYPE,
+                       RAILWAY, 100, g->game_round, 5);
+            printf("Railway rent doubles for 5 rounds.\n\n");
+            break;
+
+        case CARD_POWER_FAILURE:
+            add_effect(g, "Power Failure", EFF_RENT, SCOPE_SQUARE_TYPE,
+                       UTILITY, -50, g->game_round, 3);
+            printf("Utility income halved for 3 rounds.\n\n");
+            break;
+
+        case CARD_PORT_EXPANSION:
+            add_effect(g, "Port Expansion", EFF_PURCHASE_PRICE,
+                       SCOPE_SQUARE_TYPE, RAILWAY, 20, g->game_round, 15);
+            printf("Railway station values increase by 20%%.\n\n");
+            break;
+
+        case CARD_STOCK_MARKET_RISE:
+            add_effect(g, "Stock Market Rise", EFF_PURCHASE_PRICE,
+                       SCOPE_GLOBAL, 0, 10, g->game_round, 15);
+            printf("All property values increase by 10%%.\n\n");
+            break;
+
+        case CARD_ECONOMIC_DOWNTURN:
+            add_effect(g, "Economic Downturn", EFF_PURCHASE_PRICE,
+                       SCOPE_GLOBAL, 0, -15, g->game_round, 15);
+            printf("Property values decrease by 15%%.\n\n");
+            break;
+
+        case CARD_HOUSING_SUBSIDY:
+            add_effect(g, "Housing Subsidy", EFF_BUILD_COST,
+                       SCOPE_GLOBAL, 0, -30, g->game_round, 15);
+            printf("House construction cost reduced by 30%%.\n\n");
+            break;
+
+        case CARD_CURRENCY_DEPRECIATION:
+            add_effect(g, "Currency Depreciation", EFF_BUILD_COST,
+                       SCOPE_GLOBAL, 0, 10, g->game_round, 15);
+            printf("Construction costs increase by 10%%.\n\n");
+            break;
+
+        case CARD_PROPERTY_REVALUATION: {
+            int grp = rand() % 8;
+            add_effect(g, "Property Revaluation", EFF_PURCHASE_PRICE,
+                       SCOPE_GROUP, grp, 15, g->game_round, 15);
+            printf("A random property group appreciates by 15%%.\n\n");
+            break;
+        }
+
+        case CARD_POLITICAL_RALLY: {
+            /* "One random property closed for 2 rounds" - modelled as -100%
+             * rent on that property's group, which is what closure means for
+             * income. The ledger targets groups rather than single squares,
+             * so this is broader than the card states. */
+            Square *victim = random_developed_property(board);
+            if (victim){
+                add_effect(g, "Political Rally", EFF_RENT, SCOPE_GROUP,
+                           (int)victim->data.property.group, -100,
+                           g->game_round, 2);
+                printf("%s is closed for 2 rounds.\n\n", victim->name);
+            } else {
+                printf("No property was affected.\n\n");
+            }
+            break;
+        }
+
+        /* ---- Cards that need systems which do not exist ---- */
+
+        case CARD_INTEREST_RATE_CUT:
+        case CARD_INTEREST_RATE_INCREASE:
+            /* TODO: Rule-LK 13 says existing loan rates remain unchanged, so
+             * this must move the Bank's offered rate rather than live loans.
+             * LOAN_INTEREST_PERCENT is still a compile-time constant. */
+            printf("(Not applied - the Bank rate is currently fixed.)\n\n");
+            break;
+
+        case CARD_INSURANCE_DISCOUNT:
+            /* TODO: insurance is not implemented (Rules-LK 8 to 11). */
+            printf("(Not applied - insurance is not implemented.)\n\n");
+            break;
+
+        case CARD_FOREIGN_FUNDING:
+            /* TODO: "commercial property" is never defined in the spec. It
+             * would need a tag on each square and an interpretation of which
+             * Sri Lankan locations count as commercial. */
+            printf("(Not applied - the spec does not define which properties"
+                   " are commercial.)\n\n");
+            break;
+
+        case CARD_LABOUR_STRIKE:
+            /* Construction suspended for 2 rounds - a gate on the build step
+             * rather than a percentage, so it uses its own field. */
+            g->construction_blocked_until = g->game_round + 2;
+            printf("Construction suspended for 2 rounds.\n\n");
+            break;
+
         default:
-            printf("No effect is applied yet for this card.\n\n");
             break;
     }
 
-    (void)g;
-    (void)p;
+}
+
+/* Appendix A Labour Strike and Rule-LK 18 Fuel Crisis both suspend or slow
+ * construction. Suspension is a gate on the build step, not a percentage, so
+ * it is checked directly rather than through the ledger. */
+bool construction_allowed(const GameStat *g){
+    return g->game_round >= g->construction_blocked_until;
+}
+
+/* Rule-LK 18: every fifteen rounds one national economic event occurs,
+ * affecting every player. Each is given a fifteen-round interval between events. 
+ * Thus exactly one is active at a time. */
+void trigger_economic_event(GameStat *g){
+    static const char *names[] = {
+        "Tourism Boom", "Fuel Crisis", "Heavy Monsoon", "Economic Recession",
+        "Stock Market Boom", "Government Housing Programme",
+        "Foreign Investment", "Political Unrest"
+    };
+    int pick = rand() % 8;
+
+    printf("Economic Event\n\n%s\n\n", names[pick]);
+
+    switch (pick){
+        case 0:
+            add_effect(g, "Tourism Boom", EFF_RENT, SCOPE_GLOBAL, 0,
+                       100, g->game_round, 15);
+            printf("Hotels receive double rent.\n\n");
+            break;
+
+        case 1:
+            add_effect(g, "Fuel Crisis", EFF_RENT, SCOPE_SQUARE_TYPE,
+                       RAILWAY, 100, g->game_round, 15);
+            add_effect(g, "Fuel Crisis", EFF_BUILD_COST, SCOPE_GLOBAL, 0,
+                       20, g->game_round, 15);
+            printf("Railway rent doubles. Development costs increase 20%%.\n\n");
+            break;
+
+        case 2:
+            /* TODO: "flood risk" needs the insurance and disaster systems,
+             * and "coastal properties" is never defined by the spec. */
+            printf("Flood risk increases.\n\n");
+            printf("(Not applied - coastal properties are not defined.)\n\n");
+            break;
+
+        case 3:
+            add_effect(g, "Economic Recession", EFF_PURCHASE_PRICE,
+                       SCOPE_GLOBAL, 0, -15, g->game_round, 15);
+            add_effect(g, "Economic Recession", EFF_RENT,
+                       SCOPE_GLOBAL, 0, -10, g->game_round, 15);
+            printf("Property values fall 15%%. Rent falls 10%%.\n\n");
+            break;
+
+        case 4:
+            add_effect(g, "Stock Market Boom", EFF_PURCHASE_PRICE,
+                       SCOPE_GLOBAL, 0, 10, g->game_round, 15);
+            printf("Property values increase 10%%.\n\n");
+            break;
+
+        case 5:
+            add_effect(g, "Government Housing Programme", EFF_BUILD_COST,
+                       SCOPE_GLOBAL, 0, -25, g->game_round, 15);
+            printf("House construction costs reduce 25%%.\n\n");
+            break;
+
+        case 6:
+            /* TODO: "commercial properties" is never defined by the spec. */
+            printf("(Not applied - commercial properties are not defined.)\n\n");
+            break;
+
+        case 7:
+            add_effect(g, "Political Unrest", EFF_RENT, SCOPE_GLOBAL, 0,
+                       -50, g->game_round, 15);
+            printf("Hotel occupancy falls; hotel rent drops 50%%.\n\n");
+            break;
+    }
+}
+
+/* Rule-LK 24: every twenty rounds one government regulation is selected. */
+void trigger_regulation(GameStat *g){
+    static const char *names[] = {
+        "Increase Property Tax", "Reduce Loan Interest", "Housing Subsidy",
+        "Luxury Property Tax", "Railway Modernization",
+        "Electricity Tariff Revision", "Insurance Regulation",
+        "Anti-Speculation Act"
+    };
+    int pick = rand() % 8;
+
+    printf("Government Regulation\n\n%s Introduced.\n\n", names[pick]);
+
+    switch (pick){
+        case 2:
+            add_effect(g, "Housing Subsidy", EFF_BUILD_COST, SCOPE_GLOBAL, 0,
+                       -30, g->game_round, 20);
+            printf("Construction costs reduced by 30%%.\n\n");
+            break;
+
+        case 4:
+            add_effect(g, "Railway Modernization", EFF_RENT,
+                       SCOPE_SQUARE_TYPE, RAILWAY, 25, g->game_round, 20);
+            printf("Railway rents increase 25%%.\n\n");
+            break;
+
+        case 5:
+            add_effect(g, "Electricity Tariff Revision", EFF_RENT,
+                       SCOPE_SQUARE_TYPE, UTILITY, 20, g->game_round, 20);
+            printf("Utility rents increase 20%%.\n\n");
+            break;
+
+        /* TODO: the remaining regulations need systems that do not exist -
+         * a mutable income tax (0), a variable Bank rate (1), a hotel
+         * maintenance tax (3), insurance premiums (6), and a cap on
+         * undeveloped holdings with forced development (7). */
+        default:
+            printf("(Not applied - requires a system that is not"
+                   " implemented.)\n\n");
+            break;
+    }
+}
+
+/* Rules-LK 30 to 33: every ten rounds the property market is reviewed. One
+ * group is selected for a Market Boom and another for a Market Decline, each
+ * lasting ten rounds. Rule-LK 33 bars a group from reselection until thirty
+ * rounds have elapsed. */
+void review_property_market(GameStat *g){
+    int boom = -1, decline = -1;
+
+    for (int attempt = 0; attempt < 20 && boom < 0; attempt++){
+        int c = rand() % 8;
+        if (g->game_round - g->group_last_event[c] >= 30) boom = c;
+    }
+    for (int attempt = 0; attempt < 20 && decline < 0; attempt++){
+        int c = rand() % 8;
+        if (c != boom && g->game_round - g->group_last_event[c] >= 30) decline = c;
+    }
+
+    if (boom >= 0){
+        g->group_last_event[boom] = g->game_round;
+        add_effect(g, "Market Boom", EFF_PURCHASE_PRICE, SCOPE_GROUP, 
+                boom, 15, g->game_round, 10);
+        add_effect(g, "Market Boom", EFF_MORTGAGE_VALUE, SCOPE_GROUP, 
+                boom, 15, g->game_round, 10);
+        add_effect(g, "Market Boom", EFF_RENT,           SCOPE_GROUP, 
+                boom, 25, g->game_round, 10);
+        add_effect(g, "Market Boom", EFF_BUILD_COST,     SCOPE_GROUP, 
+                boom, 10, g->game_round, 10);
+        printf("Market Boom declared for property group %d.\n\n", boom + 1);
+    }
+
+    if (decline >= 0){
+        g->group_last_event[decline] = g->game_round;
+        add_effect(g, "Market Decline", EFF_PURCHASE_PRICE, SCOPE_GROUP, 
+                decline, -15, g->game_round, 10);
+        add_effect(g, "Market Decline", EFF_RENT,           SCOPE_GROUP, 
+                decline, -20, g->game_round, 10);
+        add_effect(g, "Market Decline", EFF_MORTGAGE_VALUE, SCOPE_GROUP, 
+                decline, -10, g->game_round, 10);
+        printf("Market Decline declared for property group %d.\n\n", decline + 1);
+    }
 }

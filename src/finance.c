@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include "board.h"
 #include "players.h"
+#include "game.h"
+#include "events.h"
 
 static int is_active(uint8_t bitmap, int idx){
     return (bitmap >> idx) & 1;
@@ -24,11 +26,11 @@ static int count_active(uint8_t bitmap){
  * @param square_index The index of the square being auctioned
  * @return  an integer specifying the player who won the auction
  * */
-int start_auction(Player *players, Square *board, int square_index){
+int start_auction(Player *players, Square *board, int square_index, const GameStat *g){
     Square *s = &board[square_index];
     if (!s->purchasable || get_owner(s)) return -1;
 
-    int market_value = get_purchase_price(s);
+    int market_value = get_purchase_price(g, s);
     int current_bid  = market_value / 2;          // Rule-LK 19
     int winner       = -1;
 
@@ -81,41 +83,27 @@ int start_auction(Player *players, Square *board, int square_index){
     return winner;
 }
 
-/* Calculaltes income tax based on the current holding cash value. The rates are same as
- * Sri Lankan tax rates. But the thresholds starts from 15k and each 10k will get the
- * rates, as that is the practical implementation in the game.
- * @param cash Amount of money player currently hold
- * @return The amount of tax the player should be paying
- * */
 static int calculate_income_tax(const Tax *t, int cash){
-    if (cash <= t->free_allowance) return 0;
-
-    int taxable = cash - t->free_allowance;
-    int tax = 0;
-
-    for (int band = 0; band < TAX_BAND_COUNT && taxable > 0; band++){
-        int in_band;    // the taxable margin
-
-        if (band == TAX_BAND_COUNT - 1){
-            in_band = taxable;              // top rate: everything remaining
-        } else {
-            in_band = taxable < t->band_width ? taxable : t->band_width;
-        }
-
-        tax += in_band * t->rates[band] / 100;
-        taxable -= in_band;
-    }
-
-    return tax;
+    if (cash <= 0) return 0;
+    return (cash * t->base_rate + 50) / 100;
 }
 
-int pay_income_tax(Player *p, Square *board, const Tax *t){
+int pay_development_fund(Player *p, Square *board, const GameStat *g){
+    int assets = total_property_value(p, board, g);
+    int levy   = (assets * 10 + 50) / 100;
+
+    if (levy <= 0) return 0;
+
+    return mortgage_and_pay(p, board, levy, g);
+}
+
+int pay_income_tax(Player *p, Square *board, const Tax *t, const GameStat *g){
     int tax = calculate_income_tax(t, p->cash);
-    return mortgage_and_pay(p, board, tax);
+    return mortgage_and_pay(p, board, tax, g);
 }
 
-static int mortgage_square(Player *p, Square *s){
-    int value = get_mortgage_value(s);
+static int mortgage_square(Player *p, Square *s, const GameStat *g){
+    int value = get_mortgage_value(g, s);
 
     if(is_developed(s)){
         demolish_buildings(s);
@@ -132,10 +120,10 @@ static int mortgage_square(Player *p, Square *s){
 }
 
 /* Lift a mortgage, charging 110% of the mortgage value. */
-int unmortgage_square(Player *p, Square *s){
+int unmortgage_square(Player *p, Square *s, const GameStat *g){
     if (!is_mortgaged(s)) return 0;
 
-    int cost = get_mortgage_value(s) * UNMORTGAGE_PERCENT / 100;
+    int cost = get_mortgage_value(g, s) * UNMORTGAGE_PERCENT / 100;
     if (p->cash < cost) return 0;
 
     set_mortgaged(s, false);
@@ -152,7 +140,7 @@ int unmortgage_square(Player *p, Square *s){
  * capacity as possible per transaction.
  * @return true if the player can now cover `needed`.
  */
-bool raise_cash(Player *p, Square *board, int needed){
+bool raise_cash(Player *p, Square *board, int needed, const GameStat *g){
     while (p->cash < needed){
         int best = -1;
         int best_value = 0;
@@ -164,7 +152,7 @@ bool raise_cash(Player *p, Square *board, int needed){
             if (get_owner(s) != p->owner_id) continue;
             if (is_mortgaged(s)) continue;
 
-            int value = get_mortgage_value(s);
+            int value = get_mortgage_value(g, s);
             if (value <= 0) continue;
 
             if (best < 0 || value < best_value){
@@ -175,7 +163,7 @@ bool raise_cash(Player *p, Square *board, int needed){
 
         if (best < 0) return false;   /* nothing left to mortgage */
 
-        mortgage_square(p, &board[best]);
+        mortgage_square(p, &board[best], g);
     }
     return true;
 }
@@ -189,11 +177,11 @@ bool raise_cash(Player *p, Square *board, int needed){
  *         player must credit this, not the amount requested - crediting the
  *         full amount would create money that the payer never had.
  */
-int mortgage_and_pay(Player *p, Square *board, int amount){
+int mortgage_and_pay(Player *p, Square *board, int amount, const GameStat *g){
     if (amount <= 0) return 0;
 
     if (p->cash < amount){
-        raise_cash(p, board, amount);
+        raise_cash(p, board, amount, g);
     }
 
     if (p->cash >= amount){
@@ -211,18 +199,7 @@ int mortgage_and_pay(Player *p, Square *board, int amount){
     return paid;
 }
 
-/* ---- Loans -------------------------------------------------------------
- * Rule-LK 1: eligible collateral is properties, railway stations and utility
- * companies. Buildings are explicitly excluded.
- * Rule-LK 2: the maximum loan is 75% of the total mortgage value of all
- * eligible collateral.
- *
- * INTERPRETATION: already-mortgaged squares are excluded from collateral. A
- * square whose mortgage value has already been drawn as cash cannot back a
- * second advance of the same value, and Rule-LK 3 forbids additionally
- * mortgaging loan locked property.
- */
-int max_loan_amount(const Player *p, const Square *board){
+int max_loan_amount(const Player *p, const Square *board, const GameStat *g){
     int total = 0;
 
     for (int i = 0; i < BOARD_SIZE; i++){
@@ -232,7 +209,7 @@ int max_loan_amount(const Player *p, const Square *board){
         if (get_owner(s) != p->owner_id) continue;
         if (is_mortgaged(s)) continue;
 
-        total += get_mortgage_value(s);
+        total += get_mortgage_value(g, s);
     }
 
     return total * MAX_LOAN_PERCENT / 100;
@@ -241,7 +218,7 @@ int max_loan_amount(const Player *p, const Square *board){
 /* Pledge every eligible square as collateral. Rule-LK 3: pledged squares
  * become Loan Locked - they keep earning rent and may still be developed,
  * but cannot be sold, traded, auctioned or further mortgaged. */
-static void lock_collateral(Player *p, Square *board){
+static void lock_collateral(Player *p, Square *board, const GameStat *g){
     printf("Collateral :\n");
 
     for (int i = 0; i < BOARD_SIZE; i++){
@@ -264,7 +241,7 @@ static void release_collateral(Player *p, Square *board){
     }
 }
 
-static void obtain_loan(Player *p, Square *board, int amount, int game_round){
+static void obtain_loan(Player *p, Square *board, int amount, int game_round, const GameStat *g){
     if (amount <= 0) return;
 
     p->loan_amount   = amount;
@@ -274,12 +251,12 @@ static void obtain_loan(Player *p, Square *board, int amount, int game_round){
 
     printf("%s obtained a secured loan.\n\n", player_name(p->id));
     printf("Loan Amount : LKR %s.\n\n", lkr(amount));
-    lock_collateral(p, board);
+    lock_collateral(p, board, g);
     printf("Interest Rate : %d%%\n", LOAN_INTEREST_PERCENT);
     printf("Duration : %d Rounds\n\n", LOAN_DURATION);
 }
 
-static void repay_loan(Player *p, Square *board, int amount){
+static void repay_loan(Player *p, Square *board, int amount, const GameStat *g){
     if (p->loan_amount <= 0 || amount <= 0) return;
     if (amount > p->loan_amount) amount = p->loan_amount;
     if (amount > p->cash)        amount = p->cash;
@@ -302,7 +279,7 @@ static void repay_loan(Player *p, Square *board, int amount){
  * pledged assets transfer to the Bank, buildings are demolished, insurance is
  * cancelled, the outstanding debt is cleared, and the player continues using
  * whatever assets remain. */
-static void default_loan(Player *p, Square *board){
+static void default_loan(Player *p, Square *board, const GameStat *g){
     printf("%s has defaulted.\n\n", player_name(p->id));
 
     for (int i = 0; i < BOARD_SIZE; i++){
@@ -324,9 +301,6 @@ static void default_loan(Player *p, Square *board){
 
     printf("Collateral has been foreclosed.\n\n");
     printf("Outstanding debt cleared.\n\n");
-
-    /* TODO: Rule-LK 7 - if the player has no remaining assets at all they
-     * are declared bankrupt. Needs Rule 14 bankruptcy. */
 }
 
 /* Rule-LK 4: interest compounds at the end of every complete round -
@@ -339,12 +313,14 @@ void accrue_loan_interest(Player *p){
 
 /* Rule-LK 4: maturity is measured in complete rounds, so this is checked at
  * the same point as interest accrual. */
-void check_loan_default(Player *p, Square *board, int game_round){
+void check_loan_default(Player *p, Square *board, int game_round, const GameStat *g){
     if (p->loan_amount <= 0) return;
     if (game_round - p->loan_round < p->loan_duration) return;
-    default_loan(p, board);
+    default_loan(p, board, g);
 }
 
+/* Prices the income tax bill a player would face at the given cash level.
+ * Exposed so strategies can reason about an upcoming liability. */
 int projected_income_tax(const Square *board, int cash){
     for (int i = 0; i < BOARD_SIZE; i++){
         if (board[i].type == TAX){
@@ -354,9 +330,9 @@ int projected_income_tax(const Square *board, int cash){
     return 0;
 }
 
-void resolve_bank_visit(Player *p, Square *board, int game_round){
-    int max_loan = max_loan_amount(p, board);
-    LoanDecision d = p->loan_action(p, board, max_loan);
+void resolve_bank_visit(Player *p, Square *board, int game_round, const GameStat *g){
+    int max_loan = max_loan_amount(p, board, g);
+    LoanDecision d = p->loan_action(p, board, max_loan, g);
 
     /* Rule-LK 2: never advance more than the collateral supports. */
     if (d.amount > max_loan) d.amount = max_loan;
@@ -364,15 +340,15 @@ void resolve_bank_visit(Player *p, Square *board, int game_round){
 
     switch (d.action){
         case LOAN_OBTAIN:
-            obtain_loan(p, board, d.amount, game_round);
+            obtain_loan(p, board, d.amount, game_round, g);
             break;
 
         case LOAN_REPAY_FULL:
-            repay_loan(p, board, p->loan_amount);
+            repay_loan(p, board, p->loan_amount, g);
             break;
 
         case LOAN_REPAY_PART:
-            repay_loan(p, board, d.amount);
+            repay_loan(p, board, d.amount, g);
             break;
 
         case LOAN_EXTEND:
@@ -398,18 +374,6 @@ void resolve_bank_visit(Player *p, Square *board, int game_round){
     }
 }
 
-/* ---- Bankruptcy (Rule 14) ----------------------------------------------
- * Rule 14: a player becomes bankrupt when liabilities exceed available
- * assets. All buildings are removed, insurance policies expire, loans become
- * immediately due, and remaining assets transfer according to the bankruptcy
- * rules - which Rule-LK 19 defines as liquidation by auction.
- *
- * The flag is set separately from the liquidation because bankruptcy is
- * detected inside a payment, while liquidation runs auctions that themselves
- * take payments. Setting the flag and liquidating in one step would re-enter
- * the payment path with the board mid-transaction, so the turn loop
- * liquidates afterwards instead.
- */
 void declare_bankrupt(Player *p){
     if (p->bankrupt) return;
 
@@ -419,9 +383,7 @@ void declare_bankrupt(Player *p){
 
 /* Rule-LK 19: a bankrupt player's assets are liquidated by auction.
  * Rule 14: buildings are removed and loans become immediately due. */
-void liquidate_assets(Player *p, Player *players, Square *board){
-    /* Rule 14: loans become immediately due. With no assets left to settle
-     * them the debt is written off, as in Rule-LK 6 foreclosure. */
+void liquidate_assets(Player *p, Player *players, Square *board, const GameStat *g){
     p->loan_amount   = 0;
     p->loan_duration = 0;
 
@@ -439,7 +401,7 @@ void liquidate_assets(Player *p, Player *players, Square *board){
          * released to the Bank before the square goes under the hammer.
          * Rule-LK 23: if nobody bids, it simply stays with the Bank. */
         set_owner(s, OG_BANK);
-        start_auction(players, board, i);
+        start_auction(players, board, i, g);
     }
 
     /* TODO: Rule 14 also expires insurance policies. Not implemented. */
@@ -456,17 +418,6 @@ int solvent_count(const Player *players){
     return n;
 }
 
-/* ---- Property depreciation (Rules-LK 15 to 17) -------------------------
- * Rule-LK 15: every property records its age, which increases every complete
- * round.
- * Rule-LK 16: properties older than fifty rounds without renovation lose 1%
- * of value every five rounds, to a maximum of 30%.
- *
- * INTERPRETATION: depreciation reduces property VALUE, not rent. Rule-LK 16
- * says "lose value"; Rule-LK 17's mention of renovation "increasing rental"
- * is read as restoring the rent that structural damage (Rule-LK 28) removed,
- * not as depreciation having a separate rent effect.
- */
 void age_properties(Square *board){
     for (int i = 0; i < BOARD_SIZE; i++){
         Square *s = &board[i];
@@ -492,7 +443,7 @@ void age_properties(Square *board){
 /* Rule-LK 17: landing on an owned property allows the owner to renovate.
  * Renovation restores depreciation, increases rental and resets property age,
  * and costs 10% of the property's current market value. */
-int renovate_property(Player *p, Square *s){
+int renovate_property(Player *p, Square *s, const GameStat *g){
     if (s->type != PROPERTY) return 0;
 
     Property *prop = &s->data.property;
@@ -517,8 +468,7 @@ int renovate_property(Player *p, Square *s){
     return cost;
 }
 
-/* ---- Building condition (Rules-LK 25 to 29) ----------------------------
- * Rule-LK 25: each building begins at 100% condition and loses 2% at the end
+/* Rule-LK 25: each building begins at 100% condition and loses 2% at the end
  * of every round.
  * Rule-LK 28: twenty consecutive rounds without maintenance causes structural
  * damage - property value -15%, maximum rent -25%, maintenance costs +50%.
@@ -546,17 +496,7 @@ void degrade_buildings(Square *board){
     }
 }
 
-/* Rule-LK 27: maintenance may be performed only at the beginning of a
- * player's turn. It restores condition to 100% and costs 5% of construction
- * cost for a house, 8% for a hotel. Any number of buildings may be maintained
- * provided funds are available.
- *
- * SIMPLIFICATION: section 3 gives no per-strategy maintenance behaviour, so
- * every player maintains any building it can afford once condition drops
- * below the 90% band in Table 3 - the point at which rent starts being lost.
- * Inventing four different maintenance policies would be unsupported.
- */
-void perform_maintenance(Player *p, Square *board){
+void perform_maintenance(Player *p, Square *board, const GameStat *g){
     for (int i = 0; i < BOARD_SIZE; i++){
         Square *s = &board[i];
         if (s->type != PROPERTY) continue;

@@ -2,6 +2,7 @@
 #define PLAYERS_H
 
 #define NO_OF_PLAYERS 4
+
 // bidding
 #define BUY_BOUGHT      1
 #define BUY_DECLINED    0
@@ -20,6 +21,7 @@ typedef enum {
 
 // Forward declarion of Square so Player knows it exists
 typedef struct Square Square;
+typedef struct GameStat GameStat;
 
 typedef struct Player {
     PlayerType id;
@@ -35,15 +37,12 @@ typedef struct Player {
     int loan_duration;
     bool bankrupt;
 
-    int (*buy_property)(struct Player *p, Square *board);
-    void (*build_property)(struct Player *p, Square *board, Group target_group);
+    int (*buy_property)(struct Player *p, Square *board, const GameStat *g);
+    void (*build_property)(struct Player *p, Square *board, Group target_group,
+                           const GameStat *g);
     int (*bid)(const struct Player *p, int current_bid, int market_value);
-    /* Rule-LK 5: which of the five bank actions this strategy takes.
-     * Returns a LoanAction; finance.c executes it. */
-    LoanDecision (*loan_action)(const struct Player *p, const Square *board, int max_loan);
-    /* Rule-LK 17: whether this strategy renovates the given property now.
-     * Section 3 states explicit depreciation thresholds for two of the four
-     * players. */
+    LoanDecision (*loan_action)(const struct Player *p, const Square *board, int max_loan,
+                                const GameStat *g);
     bool (*should_renovate)(const struct Player *p, const Square *s);
 } Player;
 
@@ -54,14 +53,11 @@ Player* find_player(Player *players, Owner id);
 const char *player_name(PlayerType id);
 const char *lkr(int amount);
 
-/*
- * TODO: the insurance, loan, interest and tax-due terms are all zero until
- * finance.c exists. */
-int calculate_net_worth(const Player *p, const Square *board);
+int calculate_net_worth(const Player *p, const Square *board, const GameStat *g);
 
-/* Counts for the round summary block. */
+// Counts for the round summary block
 int count_properties(const Player *p, const Square *board);
 int count_hotels(const Player *p, const Square *board);
-int total_property_value(const Player *p, const Square *board);
+int total_property_value(const Player *p, const Square *board, const GameStat *g);
 
 #endif /* PLAYERS_H */
