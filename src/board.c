@@ -2,18 +2,37 @@
 #include "board.h"
 #include "types.h"
 
+/* Board data comes from Table 1 (layout), Appendix B (property values) and
+ * Tables 7 and 8 (railway and utility rent).
+ *
+ * Every field is listed explicitly rather than relying on C zero-filling
+ * unlisted members. Two of them would be wrong at zero:
+ *   - condition must start at 100 (Rule-LK 25); zero puts a building below
+ *     the 25% floor in Table 3, closing it so it collects no rent.
+ *   - mortgage_value on railways and utilities is needed by raise_cash and
+ *     max_loan_amount; at zero they are invisible as collateral.
+ *
+ * Railway purchase price is not stated in the spec. Rule-LK 2's worked
+ * example uses a railway mortgage value of 4,000, and Appendix B makes
+ * mortgage value exactly half the purchase price for every property group -
+ * both point to 8,000.
+ *
+ * Railway and utility base_rental is likewise not spec data: Tables 7 and 8
+ * price them by how many the owner holds, not from a base value. The 250 here
+ * is used only by get_rent for purchase lookahead, never for rent collection.
+ */
 void draw_board(Square* board){
-	Square temp_board[40] = {
+	Square temp_board[BOARD_SIZE] = {
+ 
 		[0] = {
 			.type = START,
 			.name = "GO",
 			.purchasable = false,
-			.data.start = {
-				.award = 2000,
-                .pass_start = NULL,
-			}
+            .data.start = {
+                .award = 2000
+            }
 		},
-
+ 
 		[1] = {
 			.type = PROPERTY,
 			.name = "Pettah",
@@ -29,16 +48,22 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[2] = {
 			.type = EVENT,
 			.name = "Community Development Fund",
 			.purchasable = false
 		},
-
+ 
 		[3] = {
 			.type = PROPERTY,
 			.name = "Maradana",
@@ -54,10 +79,16 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[4] = {
 			.type = TAX,
 			.name = "Income Tax",
@@ -68,18 +99,21 @@ void draw_board(Square* board){
                 .rates = {6, 18, 24, 30}
             }
 		},
-
+ 
 		[5] = {
 			.type = RAILWAY,
 			.name = "Colombo Fort Railway Station",
 			.purchasable = true,
 			.data.railway = {
 				.owner = OG_BANK,
-                .base_rental = 250, // 1.1.2 table 07 starts from 250
-                .purchase_price = 8000 
+				.purchase_price = 8000,
+				.base_rental = 250,
+				.mortgage_value = 4000,
+				.mortgage_stat = false,
+				.loan_locked = false
 			}
 		},
-
+ 
 		[6] = {
 			.type = PROPERTY,
 			.name = "Bambalapitiya",
@@ -95,16 +129,22 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[7] = {
 			.type = EVENT,
 			.name = "National Event Card",
 			.purchasable = false
 		},
-
+ 
 		[8] = {
 			.type = PROPERTY,
 			.name = "Wellawatte",
@@ -120,10 +160,16 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[9] = {
 			.type = PROPERTY,
 			.name = "Mount Lavinia",
@@ -139,19 +185,25 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[10] = {
 			.type = SPECIAL,
 			.name = "Jail / Just Visiting",
 			.purchasable = false,
             .data.special = {
                 .kind = JAIL_VISITING
-			}
+            }
 		},
-
+ 
 		[11] = {
 			.type = PROPERTY,
 			.name = "Nugegoda",
@@ -167,21 +219,30 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[12] = {
 			.type = UTILITY,
 			.name = "Ceylon Electricity Board",
 			.purchasable = true,
 			.data.utility = {
 				.owner = OG_BANK,
-                .purchase_price = 1500,
-                .base_rental = 250
+				.purchase_price = 1500,
+				.base_rental = 250,
+				.mortgage_value = 750,
+				.mortgage_stat = false,
+				.loan_locked = false
 			}
 		},
-
+ 
 		[13] = {
 			.type = PROPERTY,
 			.name = "Maharagama",
@@ -197,10 +258,16 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[14] = {
 			.type = PROPERTY,
 			.name = "Kottawa",
@@ -216,21 +283,30 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[15] = {
 			.type = RAILWAY,
 			.name = "Kandy Railway Station",
 			.purchasable = true,
 			.data.railway = {
 				.owner = OG_BANK,
-                .base_rental = 250,
-                .purchase_price = 8000
+				.purchase_price = 8000,
+				.base_rental = 250,
+				.mortgage_value = 4000,
+				.mortgage_stat = false,
+				.loan_locked = false
 			}
 		},
-
+ 
 		[16] = {
 			.type = PROPERTY,
 			.name = "Negombo",
@@ -246,20 +322,26 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[17] = {
 			.type = INSURANCE,
 			.name = "Sri Lanka Insurance",
 			.purchasable = false,
-			.data.insurance = {
-				.name = "Sri Lanka Insurance",
-				.type = NULL
-			}
+            .data.insurance = {
+                .name = "Sri Lanka Insurance",
+                .type = NULL
+            }
 		},
-
+ 
 		[18] = {
 			.type = PROPERTY,
 			.name = "Katunayake",
@@ -275,10 +357,16 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[19] = {
 			.type = PROPERTY,
 			.name = "Ja-Ela",
@@ -294,19 +382,25 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[20] = {
 			.type = SPECIAL,
 			.name = "Free Parking",
 			.purchasable = false,
             .data.special = {
                 .kind = FREE_PARKING
-			}
+            }
 		},
-
+ 
 		[21] = {
 			.type = PROPERTY,
 			.name = "Kandy City",
@@ -322,16 +416,22 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[22] = {
 			.type = EVENT,
 			.name = "National Event Card",
 			.purchasable = false
 		},
-
+ 
 		[23] = {
 			.type = PROPERTY,
 			.name = "Peradeniya",
@@ -347,10 +447,16 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[24] = {
 			.type = PROPERTY,
 			.name = "Katugastota",
@@ -366,21 +472,30 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[25] = {
 			.type = RAILWAY,
 			.name = "Galle Railway Station",
 			.purchasable = true,
 			.data.railway = {
 				.owner = OG_BANK,
-                .base_rental = 250,
-                .purchase_price = 8000
+				.purchase_price = 8000,
+				.base_rental = 250,
+				.mortgage_value = 4000,
+				.mortgage_stat = false,
+				.loan_locked = false
 			}
 		},
-
+ 
 		[26] = {
 			.type = PROPERTY,
 			.name = "Galle Fort",
@@ -396,10 +511,16 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[27] = {
 			.type = PROPERTY,
 			.name = "Unawatuna",
@@ -411,25 +532,34 @@ void draw_board(Square* board){
 				.base_rental = 620,
 				.house_const_cost = 2000,
 				.hotel_const_cost = 8000,
-				.owner = OG_BANK, 
+				.owner = OG_BANK,
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[28] = {
 			.type = UTILITY,
 			.name = "National Water Supply and Drainage Board",
 			.purchasable = true,
 			.data.utility = {
 				.owner = OG_BANK,
-                .purchase_price = 1500,
-                .base_rental = 250
+				.purchase_price = 1500,
+				.base_rental = 250,
+				.mortgage_value = 750,
+				.mortgage_stat = false,
+				.loan_locked = false
 			}
 		},
-
+ 
 		[29] = {
 			.type = PROPERTY,
 			.name = "Hikkaduwa",
@@ -445,19 +575,25 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[30] = {
 			.type = SPECIAL,
 			.name = "Go To Jail",
 			.purchasable = false,
             .data.special = {
                 .kind = GO_TO_JAIL
-			}
+            }
 		},
-
+ 
 		[31] = {
 			.type = PROPERTY,
 			.name = "Jaffna Town",
@@ -473,10 +609,16 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[32] = {
 			.type = PROPERTY,
 			.name = "Nallur",
@@ -492,20 +634,26 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[33] = {
 			.type = INSURANCE,
 			.name = "Ceylinco Insurance",
 			.purchasable = false,
-			.data.insurance = {
-				.name = "Ceylinco Insurance",
-				.type = NULL
-			}
+            .data.insurance = {
+                .name = "Ceylinco Insurance",
+                .type = NULL
+            }
 		},
-
+ 
 		[34] = {
 			.type = PROPERTY,
 			.name = "Trincomalee",
@@ -521,27 +669,36 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[35] = {
 			.type = RAILWAY,
 			.name = "Jaffna Railway Station",
 			.purchasable = true,
 			.data.railway = {
 				.owner = OG_BANK,
-                .base_rental = 250,
-                .purchase_price = 8000
+				.purchase_price = 8000,
+				.base_rental = 250,
+				.mortgage_value = 4000,
+				.mortgage_stat = false,
+				.loan_locked = false
 			}
 		},
-
+ 
 		[36] = {
 			.type = EVENT,
 			.name = "National Event Card",
 			.purchasable = false
 		},
-
+ 
 		[37] = {
 			.type = PROPERTY,
 			.name = "Nuwara Eliya",
@@ -557,16 +714,22 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		},
-
+ 
 		[38] = {
 			.type = BANK,
 			.name = "Bank of Ceylon",
 			.purchasable = false
 		},
-
+ 
 		[39] = {
 			.type = PROPERTY,
 			.name = "Galle Face",
@@ -582,12 +745,19 @@ void draw_board(Square* board){
 				.mortgage_stat = false,
 				.insurance_stat = false,
 				.no_of_houses = 0,
-				.has_hotel = false
+				.has_hotel = false,
+				.loan_locked = false,
+				.age = 0,
+				.depreciation = 0,
+				.condition = 100,
+				.rounds_since_maintenance = 0,
+				.structural_damage = false
 			}
 		}
+ 
 	};
-
-    memcpy(board, temp_board, sizeof(Square) * 40);
+ 
+    memcpy(board, temp_board, sizeof(Square) * BOARD_SIZE);
 }
 
 int resolve_out_of_bounds(int curr_pos, int offset){
