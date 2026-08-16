@@ -188,14 +188,7 @@ static void collect_rent(Player *p, Player *players, Square *board,
 
     if (owner == OG_BANK) return;            /* unowned - purchase path */
     if (owner == p->owner_id){
-        if (s->type == PROPERTY){
-            printf("[DEBUG] %s on own %s: dep=%d damaged=%d cash=%d cost=%d\n",
-                   player_name(p->id), s->name,
-                   s->data.property.depreciation,
-                   s->data.property.structural_damage,
-                   p->cash, s->data.property.purchase_price / 10);
-        }
-        /* Rule-LK 17: landing on an owned property lets the owner renovate.
+       /* Rule-LK 17: landing on an owned property lets the owner renovate.
          * No rent is charged on your own square. */
         if (s->type == PROPERTY && p->should_renovate(p, s)){
             renovate_property(p, s);
@@ -255,6 +248,7 @@ static void resolve_landing(Player *p, Player *players, Square *board, GameStat 
         /* TODO: Appendix A - draw the top National Event Card, apply it,
          * return it to the bottom of the deck. Needs events.c. */
         case EVENT:
+            draw_event_card(game, p, players, board);
             break;
 
         /* TODO: Rule-LK 8 / section 1.2 - purchase or renew one of three
@@ -335,7 +329,7 @@ static void print_round_summary(const Player *players, const Square *board,
         const Player *p = &players[i];
 
         if (p->bankrupt){
-       printf("%s\n\nBANKRUPT\n\n", player_name(p->id));
+            printf("%s\n\nBANKRUPT\n\n", player_name(p->id));
             if (i < NO_OF_PLAYERS - 1){
                 printf("---------------------------------------------\n\n");
             }
@@ -347,8 +341,13 @@ static void print_round_summary(const Player *players, const Square *board,
         printf("Net Worth : LKR %s\n\n", lkr(calculate_net_worth(p, board)));
         printf("Properties : %d\n\n", count_properties(p, board));
         printf("Hotels : %d\n\n", count_hotels(p, board));
-        /* TODO: outstanding loans need finance.c - always None for now. */
-        printf("Outstanding Loan : None\n\n");
+        /* Rule-LK 4: accrued interest is folded into loan_amount, so this is
+         * the full outstanding balance, not just the principal. */
+        if (p->loan_amount > 0){
+            printf("Outstanding Loan : LKR %s\n\n", lkr(p->loan_amount));
+        } else {
+            printf("Outstanding Loan : None\n\n");
+        }
 
         if (i < NO_OF_PLAYERS - 1){
             printf("---------------------------------------------\n\n");
@@ -388,7 +387,11 @@ static void print_end_of_game(const Player *players, const Square *board){
     printf("Total Property Value\n\n");
     printf("LKR %s\n\n", lkr(total_property_value(w, board)));
     printf("Outstanding Loans\n\n");
-    printf("None\n\n");
+    if (w->loan_amount > 0){
+        printf("LKR %s\n\n", lkr(w->loan_amount));
+    } else {
+        printf("None\n\n");
+    }
     printf("Net Worth\n\n");
     printf("LKR %s\n\n", lkr(best_worth));
     printf("=============================================\n");
@@ -402,9 +405,12 @@ void start_simulation(void){
     game.players_passed_go = 0;
     game.last_roll         = 0;
     game.inflation_rate    = 0;
+    game.effect_count = 0;
     
     game.mark_player_game_rounds  = mark_game_round;
     game.reset_player_game_rounds = reset_game_round;
+
+    init_event_deck(&game.deck);
 
     Square board[BOARD_SIZE];
     draw_board(board);
